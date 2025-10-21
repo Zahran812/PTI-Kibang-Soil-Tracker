@@ -41,9 +41,7 @@ export default function DashboardLayout({
 
       <div className="flex flex-col flex-1">
         <Header onToggleSidebar={toggleSidebar} />
-        <main className="flex-1 overflow-auto">
-          {children}
-        </main>
+        <main className="flex-1 overflow-auto">{children}</main>
       </div>
     </div>
   );
