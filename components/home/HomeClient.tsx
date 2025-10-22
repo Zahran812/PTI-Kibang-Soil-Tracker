@@ -12,7 +12,6 @@ import {
 import { db } from "@/lib/firebase";
 import MetricCard from "@/components/home/MetricCard";
 import SensorChart from "@/components/home/SensorChart";
-import Notification from "@/components/home/Notification";
 
 // Tipe Data
 interface SensorData {
@@ -49,21 +48,6 @@ const formatTime = (timestamp: number): string => {
 export default function DashboardClient({ initialData }: DashboardClientProps) {
   const [latestData, setLatestData] = useState(initialData);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [notifications, setNotifications] = useState<
-    { id: number; message: string }[]
-  >([]);
-
-  const addNotification = (message: string) => {
-    setNotifications((prev) => {
-      if (prev.some((n) => n.message === message)) return prev;
-      const newNotifications = [...prev, { id: Date.now(), message }];
-      return newNotifications.slice(-5);
-    });
-  };
-
-  const removeNotification = (id: number) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-  };
 
   useEffect(() => {
     const latestSensorRef = ref(db, "sensors/latest");
@@ -71,38 +55,6 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
       if (snapshot.exists()) {
         const data: SensorData = snapshot.val();
         setLatestData(data);
-        const { ph, suhu, kelembaban } = data;
-        if (ph < SENSOR_THRESHOLDS.ph[0] || ph > SENSOR_THRESHOLDS.ph[1]) {
-          addNotification(
-            `Perhatian: pH tanah (${ph.toFixed(
-              1
-            )}) di luar batas normal (${SENSOR_THRESHOLDS.ph.join(" - ")}).`
-          );
-        }
-        if (
-          suhu < SENSOR_THRESHOLDS.suhu[0] ||
-          suhu > SENSOR_THRESHOLDS.suhu[1]
-        ) {
-          addNotification(
-            `Perhatian: Suhu tanah (${suhu.toFixed(
-              1
-            )}°C) di luar batas normal (${SENSOR_THRESHOLDS.suhu.join(
-              " - "
-            )}°C).`
-          );
-        }
-        if (
-          kelembaban < SENSOR_THRESHOLDS.kelembaban[0] ||
-          kelembaban > SENSOR_THRESHOLDS.kelembaban[1]
-        ) {
-          addNotification(
-            `Perhatian: Kelembaban tanah (${kelembaban.toFixed(
-              1
-            )}%) di luar batas normal (${SENSOR_THRESHOLDS.kelembaban.join(
-              " - "
-            )}%).`
-          );
-        }
       }
     });
 
@@ -144,59 +96,43 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
   }, []);
 
   return (
-    <>
-      {/* --- Container Notifikasi (Posisi Fixed) --- */}
-      <div className="fixed top-20 right-4 w-full max-w-sm z-50 space-y-4">
-        {notifications.map((notif) => (
-          <Notification
-            key={notif.id}
-            message={notif.message}
-            type="warning"
-            onClose={() => removeNotification(notif.id)}
-          />
-        ))}
+
+    <div className="bg-gray-50 min-h-full p-4 sm:p-6 lg:p-8 space-y-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <MetricCard
+          title="pH Tanah"
+          value={latestData.ph}
+          thresholds={SENSOR_THRESHOLDS.ph}
+        />
+        <MetricCard
+          title="Suhu Tanah"
+          value={latestData.suhu}
+          unit="°C"
+          thresholds={SENSOR_THRESHOLDS.suhu}
+        />
+        <MetricCard
+          title="Kelembaban"
+          value={latestData.kelembaban}
+          unit="%"
+          thresholds={SENSOR_THRESHOLDS.kelembaban}
+        />
       </div>
 
-      {/* --- Konten Utama Dashboard --- */}
-      <div className="bg-gray-50 min-h-full p-4 sm:p-6 lg:p-8 space-y-8">
-        {/* --- Bagian Metrik --- */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <MetricCard
-            title="pH Tanah"
-            value={latestData.ph}
-            thresholds={SENSOR_THRESHOLDS.ph}
-          />
-          <MetricCard
-            title="Suhu Tanah"
-            value={latestData.suhu}
-            unit="°C"
-            thresholds={SENSOR_THRESHOLDS.suhu}
-          />
-          <MetricCard
-            title="Kelembaban"
-            value={latestData.kelembaban}
-            unit="%"
-            thresholds={SENSOR_THRESHOLDS.kelembaban}
-          />
-        </div>
-
-        {/* --- Bagian Grafik --- */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <SensorChart title="Grafik pH" data={history} dataKey="ph" unit="" />
-          <SensorChart
-            title="Grafik Suhu"
-            data={history}
-            dataKey="suhu"
-            unit="°C"
-          />
-          <SensorChart
-            title="Grafik Kelembaban"
-            data={history}
-            dataKey="kelembaban"
-            unit="%"
-          />
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <SensorChart title="Grafik pH" data={history} dataKey="ph" unit="" />
+        <SensorChart
+          title="Grafik Suhu"
+          data={history}
+          dataKey="suhu"
+          unit="°C"
+        />
+        <SensorChart
+          title="Grafik Kelembaban"
+          data={history}
+          dataKey="kelembaban"
+          unit="%"
+        />
       </div>
-    </>
+    </div>
   );
 }
