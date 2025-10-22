@@ -1,4 +1,3 @@
-// components/home/Notification.tsx
 "use client";
 
 import { X } from "lucide-react"; // Import X sekarang digunakan
@@ -10,8 +9,6 @@ interface NotificationProps {
   onClose: () => void;
 }
 
-// Catatan: Karena saya tidak melihat kode asli Anda, saya membuat tampilan
-// yang modern dan fungsional. Anda bisa mengganti isinya dengan kode asli Anda.
 export default function Notification({
   message,
   type = "info",
@@ -50,7 +47,7 @@ export default function Notification({
         className="text-gray-500 hover:text-gray-900 ml-2"
         aria-label="Tutup notifikasi"
       >
-        <X size={18} /> {/* Mengganti SVG dengan komponen X */}
+        <X size={18} /> {/* Menggunakan komponen X */}
       </button>
     </div>
   );

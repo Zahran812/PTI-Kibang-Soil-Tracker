@@ -1,8 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react"; // Tambahkan import useState
-import { X } from "lucide-react"; // X sekarang akan kita gunakan
+import { useState } from "react";
+import { X } from "lucide-react"; // Hanya butuh X untuk notifikasi
+import ProfileDropdown from "@/components/home/Profile"; // Import komponen ProfileDropdown yang baru
 
 // Tipe Data Notifikasi (Didefinisikan ulang untuk Header)
 interface AppNotification {
@@ -25,12 +26,22 @@ export default function Header({
 }: HeaderProps) {
   // State untuk mengelola status buka/tutup dropdown notifikasi
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  // State Profile kembali diangkat ke Header untuk kontrol silang
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const toggleNotif = () => {
+    // Saat Notifikasi dibuka, Profile harus ditutup
+    setIsProfileOpen(false);
     setIsNotifOpen((prev) => !prev);
-    // Jika notifikasi dibuka, kita bisa menghapus badge warning count
-    // (Opsional: logic ini bisa dihandle di layout jika Anda ingin mempertahankan state warning)
   };
+
+  const toggleProfile = () => {
+    // Saat Profile dibuka, Notifikasi harus ditutup
+    setIsNotifOpen(false);
+    setIsProfileOpen((prev) => !prev);
+  };
+
+  // Logic Logout (Dihapus dari sini, dipindahkan ke ProfileDropdown.tsx)
 
   // Hitung notifikasi baru (misalnya yang bertipe warning)
   const warningCount = notifications.filter((n) => n.type === "warning").length;
@@ -66,7 +77,7 @@ export default function Header({
         {/* Kontainer Notifikasi dengan Dropdown */}
         <div className="relative">
           <button // Tombol Ikon Notifikasi
-            onClick={toggleNotif}
+            onClick={toggleNotif} // Menggunakan toggleNotif yang baru
             className="relative w-[50px] h-[50px] rounded-full bg-[#BFF0BF] flex items-center justify-center cursor-pointer transition-colors duration-200 hover:bg-gray-200 flex-shrink-0"
             aria-label="Notifications"
           >
@@ -115,7 +126,7 @@ export default function Header({
                         className="text-gray-400 hover:text-gray-600 flex-shrink-0 ml-2"
                         aria-label="Tutup notifikasi"
                       >
-                        <X size={16} /> {/* Mengganti SVG dengan komponen X */}
+                        <X size={16} />
                       </button>
                     </li>
                   ))}
@@ -125,16 +136,12 @@ export default function Header({
           )}
         </div>
 
-        {/* Profile Icon */}
-        <div className="w-[50px] h-[50px] rounded-full bg-[#2DB92D] flex items-center justify-center cursor-pointer transition-colors duration-200 hover:bg-gray-200 flex-shrink-0">
-          <Image
-            src="/images/profile.svg"
-            alt="Profile"
-            width={24}
-            height={24}
-            className="object-contain"
-          />
-        </div>
+        {/* Mengganti seluruh Kontainer Profil dengan komponen ProfileDropdown */}
+        {/* Meneruskan state dan toggle function ke ProfileDropdown */}
+        <ProfileDropdown
+          isProfileOpen={isProfileOpen}
+          toggleProfile={toggleProfile}
+        />
       </div>
     </header>
   );
