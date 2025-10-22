@@ -1,7 +1,7 @@
 // app/dashboard/home/page.tsx
 import { get, ref } from "firebase/database";
 import { db } from "@/lib/firebase";
-import DashboardClient from "./client";
+import DashboardClient from "@/components/home/HomeClient";
 
 // Definisikan tipe data untuk data sensor
 interface SensorData {

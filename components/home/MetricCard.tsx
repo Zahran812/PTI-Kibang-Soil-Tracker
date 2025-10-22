@@ -5,17 +5,29 @@ interface MetricCardProps {
   title: string;
   value: number;
   unit?: string;
-  // Ambang batas: [baik, waspada]
+  // Ambang batas: [batas_bawah, batas_atas]
   thresholds?: [number, number];
 }
 
 // Fungsi untuk menentukan warna berdasarkan nilai dan ambang batas
 const getCardColor = (value: number, thresholds?: [number, number]): string => {
-  if (!thresholds) return "bg-green-100"; // Default
-  if (value < thresholds[0] || value > thresholds[1]) {
-    return "bg-red-100 text-red-800"; // Di luar batas aman
+  if (!thresholds) return "bg-gray-100"; // Warna netral jika tidak ada ambang batas
+
+  const [min, max] = thresholds;
+
+  if (value >= min && value <= max) {
+    return "bg-green-100 text-green-800"; // Dalam batas aman (Normal)
   }
-  return "bg-green-100 text-green-800"; // Dalam batas aman
+  return "bg-red-100 text-red-800"; // Di luar batas aman (Bahaya)
+};
+
+// Fungsi untuk membuat pesan bantuan
+const getHelperMessage = (
+  title: string,
+  thresholds?: [number, number]
+): string => {
+  if (!thresholds) return "";
+  return `Normal: ${thresholds[0]} - ${thresholds[1]}`;
 };
 
 export default function MetricCard({
@@ -25,6 +37,7 @@ export default function MetricCard({
   thresholds,
 }: MetricCardProps) {
   const colorClass = getCardColor(value, thresholds);
+  const helperMessage = getHelperMessage(title, thresholds);
 
   return (
     <div
@@ -37,10 +50,11 @@ export default function MetricCard({
         </span>
         {unit && <span className="text-2xl text-gray-600">{unit}</span>}
       </div>
-      {/* Pesan bantuan sederhana untuk petani */}
-      <p className="text-center text-xs text-gray-500 mt-2">
-        {title === "pH Tanah" ? "Normal: 6.0 - 7.0" : ""}
-      </p>
+      {helperMessage && (
+        <p className="text-center text-xs text-gray-500 mt-2">
+          {helperMessage}
+        </p>
+      )}
     </div>
   );
 }
