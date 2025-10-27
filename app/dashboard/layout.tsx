@@ -23,7 +23,7 @@ export default function DashboardLayout({
     <div className="flex h-screen bg-white">
       {/* Desktop Sidebar - Hidden on mobile */}
       <div className="hidden lg:block">
-        <Sidebar activeItem="beranda" />
+        <Sidebar />
       </div>
 
       {/* Mobile Sidebar Overlay */}
@@ -34,7 +34,7 @@ export default function DashboardLayout({
             onClick={closeSidebar}
           />
           <div className="fixed left-0 top-0 z-50 lg:hidden">
-            <Sidebar activeItem="beranda" onClose={closeSidebar} />
+            <Sidebar onClose={closeSidebar} />
           </div>
         </>
       )}
