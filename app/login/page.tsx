@@ -1,11 +1,20 @@
+// app/login/page.tsx
 "use client";
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Footer from "@/components/Footer";
 import { toast } from "react-toastify";
 
+// --- PERBAIKAN: Impor fungsi auth klien ---
+import {
+  signInWithEmailAndPassword,
+  onAuthStateChanged,
+} from "firebase/auth";
+import { auth } from "@/lib/firebase"; // Impor auth dari firebase config
+
+const BLOCK_TIMESTAMP_KEY = "loginBlockExpiresAt";
 // Komponen Ikon Mata (Tetap sama)
 const EyeIcon = () => (
   <svg
@@ -53,15 +62,110 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  // PERBAIKAN: Tambahkan state untuk menangani pesan error
-  const [error, setError] = useState<string | null>(null);
+  const [loginAttempts, setLoginAttempts] = useState(0);
+  const [blockExpiresAt, setBlockExpiresAt] = useState(0);
+  const toastIdRef = useRef<any | null>(null);
+  const [isStorageLoaded, setIsStorageLoaded] = useState(false);
+
+  // --- PERBAIKAN: Tambahkan listener untuk redirect jika sudah login ---
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        // Jika user sudah login, langsung arahkan ke dashboard
+        router.replace("/dashboard/home");
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
+
+   useEffect(() => {
+   const storedBlockTime = localStorage.getItem(BLOCK_TIMESTAMP_KEY);
+   if (storedBlockTime) {
+     const expiryTime = parseInt(storedBlockTime, 10);
+     if (expiryTime > Date.now()) {
+       setBlockExpiresAt(expiryTime);
+     } else {
+       localStorage.removeItem(BLOCK_TIMESTAMP_KEY);
+     }
+   }
+   setIsStorageLoaded(true);
+ }, []);
+
+ // --- TAMBAH: useEffect untuk Timer Countdown ---
+ useEffect(() => {
+   // Hanya jalankan jika ada waktu blokir yang aktif
+   if (blockExpiresAt === 0) return;
+ 
+   // Jika toast belum ada, buat toast baru.
+   if (!toastIdRef.current || !toast.isActive(toastIdRef.current)) {
+     toastIdRef.current = toast.error("", {
+       autoClose: false,
+       closeOnClick: false,
+       draggable: false,
+       closeButton: true,
+     });
+   }
+ 
+   const interval = setInterval(() => {
+     const now = Date.now();
+     const remaining = blockExpiresAt - now;
+ 
+     if (remaining > 0) {
+       const minutes = Math.floor(remaining / 60000);
+       const seconds = Math.floor((remaining % 60000) / 1000);
+       const timeStr = `${minutes}:${seconds.toString().padStart(2, "0")}`;
+ 
+       // Update toast HANYA jika masih aktif
+       if (toastIdRef.current && toast.isActive(toastIdRef.current)) {
+         toast.update(toastIdRef.current, {
+           render: `Gagal 5x. Akun diblokir. Coba lagi dalam ${timeStr}`,
+         });
+       } else {
+         // Jika user menutup toast, hentikan interval
+         clearInterval(interval);
+       }
+     } else {
+       // Waktu habis
+       clearInterval(interval);
+       setBlockExpiresAt(0);
+       setLoginAttempts(0); // Reset percobaan
+       localStorage.removeItem(BLOCK_TIMESTAMP_KEY); // Hapus dari storage
+ 
+       if (toastIdRef.current && toast.isActive(toastIdRef.current)) {
+         toast.update(toastIdRef.current, {
+           render: "Blokir berakhir. Silakan coba login kembali.",
+           type: "success",
+           autoClose: 5000,
+           closeOnClick: true,
+           draggable: true,
+         });
+       }
+       toastIdRef.current = null;
+     }
+   }, 1000);
+ 
+   // Cleanup interval
+   return () => clearInterval(interval);
+ }, [blockExpiresAt]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
+
+    const now = Date.now();
+    if (blockExpiresAt > now) {
+      const remaining = blockExpiresAt - now;
+      const minutes = Math.floor(remaining / 60000);
+      const seconds = Math.floor((remaining % 60000) / 1000);
+      const timeStr = `${minutes}:${seconds.toString().padStart(2, "0")}`;
+ 
+      toast.warn(`Anda masih diblokir. Coba lagi dalam ${timeStr}`);
+      return;
+    }
+
     setLoading(true);
-    setError(null); // PERBAIKAN: Reset error setiap kali login dicoba
 
     try {
+      // 1. Panggil API route Anda (karena ini penting bagi Anda)
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -71,22 +175,95 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        // PERBAIKAN: Set pesan error dari respons API
+        // Jika API gagal, lempar error
         throw new Error(data.error || "Login gagal, silakan coba lagi.");
       }
 
+      // --- 2. PERBAIKAN UTAMA: Lakukan login di sisi KLIEN ---
+      // Ini penting untuk mengatur sesi di browser
+      await signInWithEmailAndPassword(auth, email, password);
+      // -----------------------------------------------------
+
       toast.success(`Login sukses! Mengarahkan...`);
       console.log("Login success:", data.user.uid);
-      console.log("Token:", data.token);
 
-      setTimeout(() => {
-        router.push("/dashboard/home");
-      }, 1500);
+      setLoginAttempts(0);
++     setBlockExpiresAt(0);
++     localStorage.removeItem(BLOCK_TIMESTAMP_KEY);
+
+      // Hapus timeout, biarkan redirect terjadi
+      router.push("/dashboard/home");
+      
+      // Kita tidak perlu setLoading(false) karena halaman akan berganti
+
     } catch (err: any) {
-      // PERBAIKAN: Tampilkan error di UI dan console
+      // PERBAIKAN: Tangani error dari API dan dari signInWithEmailAndPassword
       console.error("Login Error:", err.message);
-      setError(err.message);
-      toast.error(err.message);
+      
+      let message = err.message;
+      let isAuthError = false;
+      // Kustomisasi pesan error dari Firebase
+      if (err.code) {
+         switch (err.code) {
+            case "auth/user-not-found":
+            case "auth/invalid-credential":
+              message = "Email atau password salah.";
+              isAuthError = true;
+              break;
+            case "auth/wrong-password":
+              message = "Password salah.";
+              break;
+            case "auth/invalid-email":
+              message = "Format email tidak valid.";
+              break;
+            case "auth/too-many-requests":
+              message = "Terlalu banyak percobaan. Coba lagi nanti.";
+              isAuthError = true;
+              break;
+         }
+      } else if (
+              err.message.includes("Email atau password salah") ||
+              err.message.includes("Password salah")
+      ) {
+              message = "Email atau password salah.";
+              isAuthError = true;
+      }
+
+      if (isAuthError) {
+        const newAttempts = loginAttempts + 1;
+        setLoginAttempts(newAttempts);
+  
+        if (newAttempts >= 5) {
+          // BLOKIR
+          const newBlockTime = Date.now() + 5 * 60 * 1000;
+  
+          // PERBAIKAN UTAMA: Simpan ke localStorage!
+          localStorage.setItem(BLOCK_TIMESTAMP_KEY, newBlockTime.toString());
+  
+          setBlockExpiresAt(newBlockTime);
+          setLoginAttempts(0);
+  
+          const timeStr = "5:00";
+          if (toastIdRef.current) toast.dismiss(toastIdRef.current);
+  
+          toastIdRef.current = toast.error(
+            `Gagal 5x. Akun diblokir. Coba lagi dalam ${timeStr}`,
+            {
+              autoClose: false,
+              closeOnClick: false,
+              draggable: false,
+              closeButton: true,
+            }
+          );
+        } else {
+          // Tampilkan error percobaan biasa
+          toast.error(`${message} Percobaan ke-${newAttempts} dari 5.`);
+        }
+      } else {
+        // Tampilkan error lain (bukan auth)
+        toast.error(message);
+      }
+      
       setLoading(false);
     }
   }
@@ -95,7 +272,7 @@ export default function LoginPage() {
     setShowPassword(!showPassword);
   };
 
-  // Efek gelembung mouse (tetap sama, tidak ada error di sini)
+  // Efek gelembung mouse (tetap sama)
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       const bubble = document.createElement("div");
@@ -121,13 +298,16 @@ export default function LoginPage() {
     };
   }, []);
 
+  if (!isStorageLoaded) {
+    return null;
+  }
+
   return (
     <>
       <link
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Nico+Moji:wght@400&family=Poppins:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap"
       />
-      {/* PERBAIKAN: Hapus seluruh blok JSX yang terduplikasi */}
       <div className="relative flex flex-col w-screen h-screen overflow-y-auto p-0 m-0 box-border bg-[url('/images/kebun.jpg')] bg-cover bg-center">
         <div className="absolute inset-0 bg-green-800/50 z-0"></div>
 
@@ -150,7 +330,6 @@ export default function LoginPage() {
             {/* Bagian Kanan - Form Login */}
             <div className="flex w-[450px] h-[500px] p-4 flex-col justify-center items-stretch rounded-r-[20px] shadow-lg bg-white max-lg:w-full max-lg:h-auto max-lg:rounded-b-[20px] max-lg:rounded-r-none max-lg:p-7 max-sm:p-6">
               <div className="flex flex-col justify-center items-center gap-6 h-full border-3 border-green-600 rounded-[10px] p-8 px-10">
-                {/* PERBAIKAN: Hapus div kosong yang tidak perlu */}
                 <div className="flex flex-col items-center gap-3 self-stretch">
                   <div className="w-[80px] h-[80px] relative">
                     <Image
@@ -161,7 +340,6 @@ export default function LoginPage() {
                     />
                   </div>
                   <div className="flex flex-col items-center gap-1 self-stretch">
-                    {/* PERBAIKAN: Gunakan font-bold dari Tailwind, hapus tag <b> */}
                     <h2 className="self-stretch text-green-600 text-center text-2xl font-bold font-['Poppins'] max-lg:text-[22px] max-sm:text-xl">
                       KIBANG SOIL TRACKER
                     </h2>
@@ -186,6 +364,7 @@ export default function LoginPage() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
+                      autoComplete="email"
                     />
                   </div>
 
@@ -201,6 +380,7 @@ export default function LoginPage() {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
+                        autoComplete="current-password"
                       />
                       <button
                         type="button"
@@ -220,16 +400,10 @@ export default function LoginPage() {
                   <button
                     type="submit"
                     disabled={loading}
-                    // PERBAIKAN: Hapus kelas 'hover' yang tidak valid di akhir
                     className="flex w-[180px] h-10 px-6 py-3 justify-center items-center gap-2 rounded-full cursor-pointer bg-green-600 border-none text-white text-xl tracking-[0.15em] font-extrabold font-['Poppins'] transition-colors hover:bg-green-800 hover:rounded-2xl max-sm:w-full disabled:bg-gray-400 disabled:cursor-not-allowed"
                   >
                     {loading ? "Loading..." : "Login"}
                   </button>
-
-                  {/* PERBAIKAN: Tampilkan pesan error jika ada */}
-                  <div className="h-6 text-center">
-                    {error && <p className="text-red-600 text-sm">{error}</p>}
-                  </div>
                 </form>
               </div>
             </div>
