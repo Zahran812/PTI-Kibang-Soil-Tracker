@@ -80,6 +80,30 @@ radial-gradient(
   z-index: 1;
 }
 
+  @keyframes aurora-wave {
+    0% {
+      background-position: -200% 50%, -150% 50%, 0% 0%;
+      opacity: 0.8;
+    }
+    50% {
+      background-position: 200% 50%, 250% 50%, 0% 0%;
+      opacity: 1;
+    }
+    100% {
+      background-position: -200% 50%, -150% 50%, 0% 0%;
+      opacity: 0.8;
+    }
+  }
+
+
+.bg-aurora {
+  background-color: #14532d;
+  background-image:
+    radial-gradient(ellipse at 20% 20%, #4ade80 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 70%, #22c55e 0%, transparent 50%);
+  background-size: 300% 300%;
+  animation: aurora-wave 25s ease-in-out infinite;
+}
 }
 
 body {
