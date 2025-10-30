@@ -1,9 +1,9 @@
 "use client";
 
-import { X } from "lucide-react"; // Import X sekarang digunakan
+import { X } from "lucide-react";
 
 interface NotificationProps {
-  id?: number; // Opsional jika hanya untuk display
+  id?: number;
   message: string;
   type?: "warning" | "info";
   onClose: () => void;
