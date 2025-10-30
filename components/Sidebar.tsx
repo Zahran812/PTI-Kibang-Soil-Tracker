@@ -1,16 +1,22 @@
 "use client";
 
 import Image from "next/image";
+import { useRouter, usePathname } from "next/navigation";
 
 interface SidebarProps {
-  activeItem?: "beranda" | "riwayat";
   onClose?: () => void;
 }
 
-export default function Sidebar({ activeItem = "beranda", onClose }: SidebarProps) {
+export default function Sidebar({ onClose }: SidebarProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // Tentukan item aktif berdasarkan route sekarang
+  const isActive = (route: string) => pathname === route;
+
   return (
     <div className="w-60 h-screen bg-foundation-green text-white p-4 flex flex-col">
-      {/* Mobile Close Button */}
+      {/* Tombol Close (mobile) */}
       {onClose && (
         <div className="flex justify-end mb-4 lg:hidden">
           <button
@@ -57,10 +63,11 @@ export default function Sidebar({ activeItem = "beranda", onClose }: SidebarProp
 
       {/* Navigation Section */}
       <nav className="mt-10 space-y-3 font-inter text-sm">
-        {/* Beranda - Home */}
-        <div
-          className={`flex items-center gap-3 rounded-[10px] p-2 ${
-            activeItem === "beranda"
+        {/* Beranda */}
+        <button
+          onClick={() => router.push("/dashboard/home")}
+          className={`w-full flex items-center gap-3 rounded-[10px] p-2 text-left transition-colors duration-200 ${
+            isActive("/dashboard/home")
               ? "bg-foundation-green-dark"
               : "hover:bg-foundation-green-dark/50"
           }`}
@@ -75,12 +82,13 @@ export default function Sidebar({ activeItem = "beranda", onClose }: SidebarProp
             />
           </div>
           <span>Beranda</span>
-        </div>
+        </button>
 
-        {/* Riwayat - History */}
-        <div
-          className={`flex items-center gap-3 rounded-[10px] p-2 ${
-            activeItem === "riwayat"
+        {/* Riwayat */}
+        <button
+          onClick={() => router.push("/dashboard/history")}
+          className={`w-full flex items-center gap-3 rounded-[10px] p-2 text-left transition-colors duration-200 ${
+            isActive("/dashboard/history")
               ? "bg-foundation-green-dark"
               : "hover:bg-foundation-green-dark/50"
           }`}
@@ -95,7 +103,7 @@ export default function Sidebar({ activeItem = "beranda", onClose }: SidebarProp
             />
           </div>
           <span>Riwayat</span>
-        </div>
+        </button>
       </nav>
     </div>
   );
