@@ -67,17 +67,20 @@ export default function LoginPage() {
   const toastIdRef = useRef<any | null>(null);
   const [isStorageLoaded, setIsStorageLoaded] = useState(false);
 
-  // --- PERBAIKAN: Tambahkan listener untuk redirect jika sudah login ---
+  // State untuk panel info (dropdown)
+  const [isInfoOpen, setIsInfoOpen] = useState(false); // Default tertutup di mobile
+
+  // Listener untuk redirect jika sudah login
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        // Jika user sudah login, langsung arahkan ke dashboard
         router.replace("/dashboard/home");
       }
     });
     return () => unsubscribe();
   }, [router]);
 
+   // Cek status blokir dari localStorage
    useEffect(() => {
    const storedBlockTime = localStorage.getItem(BLOCK_TIMESTAMP_KEY);
    if (storedBlockTime) {
@@ -91,12 +94,10 @@ export default function LoginPage() {
    setIsStorageLoaded(true);
  }, []);
 
- // --- TAMBAH: useEffect untuk Timer Countdown ---
+ // useEffect untuk Timer Countdown Blokir
  useEffect(() => {
-   // Hanya jalankan jika ada waktu blokir yang aktif
    if (blockExpiresAt === 0) return;
  
-   // Jika toast belum ada, buat toast baru.
    if (!toastIdRef.current || !toast.isActive(toastIdRef.current)) {
      toastIdRef.current = toast.error("", {
        autoClose: false,
@@ -115,21 +116,18 @@ export default function LoginPage() {
        const seconds = Math.floor((remaining % 60000) / 1000);
        const timeStr = `${minutes}:${seconds.toString().padStart(2, "0")}`;
  
-       // Update toast HANYA jika masih aktif
        if (toastIdRef.current && toast.isActive(toastIdRef.current)) {
          toast.update(toastIdRef.current, {
            render: `Gagal 5x. Akun diblokir. Coba lagi dalam ${timeStr}`,
          });
        } else {
-         // Jika user menutup toast, hentikan interval
          clearInterval(interval);
        }
      } else {
-       // Waktu habis
        clearInterval(interval);
        setBlockExpiresAt(0);
-       setLoginAttempts(0); // Reset percobaan
-       localStorage.removeItem(BLOCK_TIMESTAMP_KEY); // Hapus dari storage
+       setLoginAttempts(0);
+       localStorage.removeItem(BLOCK_TIMESTAMP_KEY);
  
        if (toastIdRef.current && toast.isActive(toastIdRef.current)) {
          toast.update(toastIdRef.current, {
@@ -144,10 +142,10 @@ export default function LoginPage() {
      }
    }, 1000);
  
-   // Cleanup interval
    return () => clearInterval(interval);
  }, [blockExpiresAt]);
 
+  // Fungsi Handle Login
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
 
@@ -165,7 +163,6 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // 1. Panggil API route Anda (karena ini penting bagi Anda)
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -175,14 +172,10 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        // Jika API gagal, lempar error
         throw new Error(data.error || "Login gagal, silakan coba lagi.");
       }
 
-      // --- 2. PERBAIKAN UTAMA: Lakukan login di sisi KLIEN ---
-      // Ini penting untuk mengatur sesi di browser
       await signInWithEmailAndPassword(auth, email, password);
-      // -----------------------------------------------------
 
       toast.success(`Login sukses! Mengarahkan...`);
       console.log("Login success:", data.user.uid);
@@ -191,18 +184,14 @@ export default function LoginPage() {
 +     setBlockExpiresAt(0);
 +     localStorage.removeItem(BLOCK_TIMESTAMP_KEY);
 
-      // Hapus timeout, biarkan redirect terjadi
       router.push("/dashboard/home");
-      
-      // Kita tidak perlu setLoading(false) karena halaman akan berganti
 
     } catch (err: any) {
-      // PERBAIKAN: Tangani error dari API dan dari signInWithEmailAndPassword
       console.error("Login Error:", err.message);
       
       let message = err.message;
       let isAuthError = false;
-      // Kustomisasi pesan error dari Firebase
+      
       if (err.code) {
          switch (err.code) {
             case "auth/user-not-found":
@@ -234,12 +223,8 @@ export default function LoginPage() {
         setLoginAttempts(newAttempts);
   
         if (newAttempts >= 5) {
-          // BLOKIR
           const newBlockTime = Date.now() + 5 * 60 * 1000;
-  
-          // PERBAIKAN UTAMA: Simpan ke localStorage!
           localStorage.setItem(BLOCK_TIMESTAMP_KEY, newBlockTime.toString());
-  
           setBlockExpiresAt(newBlockTime);
           setLoginAttempts(0);
   
@@ -256,11 +241,9 @@ export default function LoginPage() {
             }
           );
         } else {
-          // Tampilkan error percobaan biasa
           toast.error(`${message} Percobaan ke-${newAttempts} dari 5.`);
         }
       } else {
-        // Tampilkan error lain (bukan auth)
         toast.error(message);
       }
       
@@ -268,11 +251,12 @@ export default function LoginPage() {
     }
   }
 
+  // Toggle Password
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword);
   };
 
-  // Efek gelembung mouse (tetap sama)
+  // Efek gelembung mouse
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       const bubble = document.createElement("div");
@@ -308,26 +292,65 @@ export default function LoginPage() {
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Nico+Moji:wght@400&family=Poppins:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap"
       />
-      <div className="relative flex flex-col w-screen h-screen overflow-y-auto p-0 m-0 box-border bg-[url('/images/kebun.jpg')] bg-cover bg-center">
+      <div className="relative flex flex-col w-full p-0 m-0 box-border bg-[url('/images/kebun.jpg')] bg-cover bg-center">
         <div className="absolute inset-0 bg-green-800/50 z-0"></div>
 
-        <div className="flex flex-grow items-center justify-center p-10 max-sm:p-5">
+        <div className="flex flex-grow items-center justify-center p-10 max-sm:p-5 min-h-screen">
           <div className="relative z-10 flex max-lg:flex-col max-lg:w-full max-lg:max-w-[500px]">
-            {/* Bagian Kiri - Welcome Message */}
+            
+            {/* Bagian Kiri - Welcome Message (Collapsible) */}
             <div className="flex w-[450px] h-[500px] p-4 flex-col justify-center items-stretch rounded-l-[20px] bg-aurora max-lg:w-full max-lg:h-auto max-lg:rounded-tl-[20px] max-lg:rounded-tr-[20px] max-lg:rounded-l-none max-lg:p-7 max-sm:p-6">
-              <div className="flex flex-col justify-center items-start gap-2 h-full border-3 border-white rounded-[10px] p-4">
-                <h1 className="self-stretch text-center text-white font-bold text-2xl font-['Poppins'] max-lg:text-[22px] max-sm:text-xl">
-                  SELAMAT DATANG !
-                </h1>
-                <p className="h-auto flex-shrink-0 self-stretch text-white font-normal text-lg text-justify font-['Poppins'] max-lg:text-base max-sm:text-sm">
-                  Kendalikan kondisi tanah Anda dengan Kibang Soil Tracker!
-                  Pantau PH, Suhu, dan Kelembaban secara Real-Time agar tanaman
-                  Anda tumbuh maksimal di Desa Metro Kibang.
-                </p>
+              <div className="flex flex-col justify-center items-start gap-2 h-full border-3 border-white rounded-[10px] p-4 max-lg:h-auto max-lg:justify-start">
+                
+                {/* Header yang bisa di-klik di mobile */}
+                <button
+                  type="button"
+                  className="flex justify-between items-center w-full lg:pointer-events-none"
+                  onClick={() => setIsInfoOpen(!isInfoOpen)}
+                  aria-expanded={isInfoOpen}
+                  aria-controls="info-panel-content"
+                >
+                  <h1 className="self-stretch text-white font-bold text-2xl font-['Poppins'] max-lg:text-[22px] max-sm:text-xl flex-1 text-center lg:text-center">
+                    SELAMAT DATANG !
+                  </h1>
+
+                  {/* --- MODIFIKASI: Ikon Chevron (Diberi transisi rotasi) --- */}
+                  <span
+                    className={`
+                      lg:hidden text-white ml-2 flex-shrink-0 
+                      transition-transform duration-300 ease-in-out
+                      ${isInfoOpen ? 'rotate-180' : 'rotate-0'}
+                    `}
+                  >
+                    {/* Menggunakan satu ikon (panah bawah) dan memutarnya */}
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </span>
+                </button>
+
+                {/* --- MODIFIKASI: Konten yang bisa disembunyikan (Diberi transisi max-height) --- */}
+                <div
+                  id="info-panel-content"
+                  className={`
+                    flex-shrink-0 self-stretch text-white font-normal text-lg text-justify font-['Poppins'] max-lg:text-base max-sm:text-sm
+                    overflow-hidden transition-[max-height] duration-300 ease-in-out
+                    ${isInfoOpen ? 'max-h-96' : 'max-h-0'} 
+                    lg:max-h-none
+                  `}
+                >
+                  {/* Wrapper tambahan untuk padding, agar padding juga ikut ter-animasi */}
+                  <p className="pt-2 lg:pt-0"> 
+                    Kendalikan kondisi tanah Anda dengan Kibang Soil Tracker!
+                    Pantau PH, Suhu, dan Kelembaban secara Real-Time agar tanaman
+                    Anda tumbuh maksimal di Desa Metro Kibang.
+                  </p>
+                </div>
               </div>
             </div>
 
-            {/* Bagian Kanan - Form Login */}
+
+            {/* Bagian Kanan - Form Login (Tidak ada perubahan) */}
             <div className="flex w-[450px] h-[500px] p-4 flex-col justify-center items-stretch rounded-r-[20px] shadow-lg bg-white max-lg:w-full max-lg:h-auto max-lg:rounded-b-[20px] max-lg:rounded-r-none max-lg:p-7 max-sm:p-6">
               <div className="flex flex-col justify-center items-center gap-6 h-full border-3 border-green-600 rounded-[10px] p-8 px-10">
                 <div className="flex flex-col items-center gap-3 self-stretch">
