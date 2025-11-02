@@ -3,17 +3,9 @@
 import { useEffect, useState } from "react";
 import Header from "../../components/Header";
 import Sidebar from "../../components/Sidebar";
-import Notification from "@/components/home/Notification"; // Import Notification
-// Mengimport fungsi dan objek yang diperlukan dari Firebase
+import Notification from "@/components/home/Notification";
 import { onValue, ref } from "firebase/database";
-// Asumsi 'db' di-export dari '@/lib/firebase'.
-// Kita tidak bisa langsung import { db } dari '@/lib/firebase' di sini karena tidak disediakan,
-// tetapi saya asumsikan db akan tersedia secara global (atau di-import di file aslinya,
-// berdasarkan struktur kode yang Anda berikan sebelumnya).
-// Untuk memastikan kode ini berfungsi dalam lingkungan Next.js,
-// saya akan mengasumsikan Anda memiliki Realtime Database instance yang sudah siap (db).
-// Catatan: Saya menggunakan import dari lib/firebase seperti yang ada di kode yang Anda berikan.
-import { db } from "@/lib/firebase";
+import { dbRealtime } from "@/lib/firebase";
 
 // Tipe Data Notifikasi
 interface AppNotification {
@@ -22,7 +14,7 @@ interface AppNotification {
   type: "warning" | "info";
 }
 
-// Tipe Data Sensor (didefinisikan ulang di sini)
+// Tipe Data Sensor
 interface SensorData {
   ph: number;
   suhu: number;
@@ -43,64 +35,59 @@ export default function DashboardLayout({
 }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  // latestData state dihapus karena nilainya tidak digunakan untuk rendering di layout,
-  // melainkan hanya digunakan di dalam listener untuk memicu notifikasi.
-  // const [latestData, setLatestData] = useState<SensorData | null>(null);
 
-  const toggleSidebar = () => {
-    setIsSidebarOpen(!isSidebarOpen);
-  };
+  const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+  const closeSidebar = () => setIsSidebarOpen(false);
 
-  const closeSidebar = () => {
-    setIsSidebarOpen(false);
-  };
-
-  // Fungsi untuk menambahkan notifikasi
+  // Fungsi untuk menambah notifikasi
   const addNotification = (
     message: string,
     type: "warning" | "info" = "warning"
   ) => {
     setNotifications((prev) => {
-      // Hanya tampilkan 5 notifikasi terakhir
-      const newNotifications = [...prev, { id: Date.now(), message, type }];
+      // Jika notifikasi dengan pesan yang sama sudah ada, update saja
+      const existing = prev.find((n) => n.message.startsWith(message.split("(")[0]));
+      if (existing) {
+        // Update bagian angka di akhir (misalnya ph berubah)
+        const updated = prev.map((n) =>
+          n.id === existing.id ? { ...n, message } : n
+        );
+        return updated;
+      }
+
+      // Jika belum ada, tambahkan notifikasi baru
+      const newNotifications = [
+        ...prev,
+        { id: Date.now(), message, type },
+      ];
+      // Batasi hanya 5 notifikasi terakhir
       return newNotifications.slice(-5);
     });
   };
 
-  // Fungsi untuk menghapus notifikasi
+  // Fungsi untuk hapus notifikasi
   const removeNotification = (id: number) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
-  // Logic Fetching Data & Pendeteksian Notifikasi
+  // Fetch data realtime dari Firebase
   useEffect(() => {
-    // Memastikan 'db' tersedia. Jika Anda menggunakan Realtime Database, 'db' harus diimpor dari '@/lib/firebase'.
-    // Saya berasumsi import 'db' sudah bekerja di lingkungan Anda.
-    if (!db) {
-      console.error(
-        "Firebase DB is not initialized. Please check '@/lib/firebase'."
-      );
-      addNotification(
-        "Koneksi Firebase gagal, notifikasi tidak aktif.",
-        "info"
-      );
+    if (!dbRealtime) {
+      console.error("Firebase DB tidak terinisialisasi.");
+      addNotification("Koneksi Firebase gagal, notifikasi nonaktif.", "info");
       return;
     }
 
-    const latestSensorRef = ref(db, "sensors/latest");
+    const latestSensorRef = ref(dbRealtime, "sensors/latest");
 
-    // Listener untuk data sensor terbaru
-    const unsubscribeLatest = onValue(
+    const unsubscribe = onValue(
       latestSensorRef,
       (snapshot) => {
         if (snapshot.exists()) {
           const data: SensorData = snapshot.val();
-          // setLatestData(data); // Baris ini dihapus karena state latestData tidak lagi dideklarasikan
-
-          // LOGIC PENDETEKSIAN THRESHOLD
           const { ph, suhu, kelembaban } = data;
 
-          // Cek PH
+          // Cek tiap threshold
           if (ph < SENSOR_THRESHOLDS.ph[0] || ph > SENSOR_THRESHOLDS.ph[1]) {
             addNotification(
               `Perhatian: pH tanah (${ph.toFixed(
@@ -109,7 +96,6 @@ export default function DashboardLayout({
               "warning"
             );
           }
-          // Cek Suhu
           if (
             suhu < SENSOR_THRESHOLDS.suhu[0] ||
             suhu > SENSOR_THRESHOLDS.suhu[1]
@@ -123,7 +109,6 @@ export default function DashboardLayout({
               "warning"
             );
           }
-          // Cek Kelembaban
           if (
             kelembaban < SENSOR_THRESHOLDS.kelembaban[0] ||
             kelembaban > SENSOR_THRESHOLDS.kelembaban[1]
@@ -147,17 +132,14 @@ export default function DashboardLayout({
       }
     );
 
-    return () => {
-      unsubscribeLatest();
-    };
-  }, []); // Run sekali saat komponen dimount
+    return () => unsubscribe();
+  }, []);
 
   return (
     <div className="flex h-screen bg-white">
-      {/* Container Notifikasi Terapung (Fixed) - Menggunakan komponen Notification Anda */}
+      {/* Container Notifikasi Terapung */}
       <div className="fixed top-4 right-4 w-full max-w-xs z-[100] space-y-2 pointer-events-none">
         {notifications.map((notif) => (
-          // Tambahkan pointer-events-auto di komponen notifikasi agar bisa diklik/tutup
           <div key={notif.id} className="pointer-events-auto">
             <Notification
               id={notif.id}
@@ -169,12 +151,12 @@ export default function DashboardLayout({
         ))}
       </div>
 
-      {/* Desktop Sidebar - Hidden on mobile */}
+      {/* Sidebar */}
       <div className="hidden lg:block">
         <Sidebar />
       </div>
 
-      {/* Mobile Sidebar Overlay */}
+      {/* Sidebar Mobile */}
       {isSidebarOpen && (
         <>
           <div
@@ -188,11 +170,10 @@ export default function DashboardLayout({
       )}
 
       <div className="flex flex-col flex-1">
-        {/* Header sekarang menerima notifikasi sebagai prop */}
         <Header
           onToggleSidebar={toggleSidebar}
           notifications={notifications}
-          removeNotification={removeNotification} // Kirim fungsi penghapus notifikasi
+          removeNotification={removeNotification}
         />
         <main className="flex-1 overflow-auto">{children}</main>
       </div>

@@ -9,7 +9,7 @@ import {
   limitToLast,
   orderByChild,
 } from "firebase/database";
-import { db } from "@/lib/firebase";
+import { dbRealtime } from "@/lib/firebase";
 import MetricCard from "@/components/home/MetricCard";
 import SensorChart from "@/components/home/SensorChart";
 
@@ -50,7 +50,7 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
 
   useEffect(() => {
-    const latestSensorRef = ref(db, "sensors/latest");
+    const latestSensorRef = ref(dbRealtime, "sensors/latest");
     const unsubscribeLatest = onValue(latestSensorRef, (snapshot) => {
       if (snapshot.exists()) {
         const data: SensorData = snapshot.val();
@@ -59,7 +59,7 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
     });
 
     const historySensorQuery = query(
-      ref(db, "sensors/history"),
+      ref(dbRealtime, "sensors/history"),
       orderByChild("timestamp"),
       limitToLast(10)
     );
