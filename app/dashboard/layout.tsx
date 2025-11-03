@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react"; // TAMBAHKAN: useRef dan useCallback
 import Header from "../../components/Header";
 import Sidebar from "../../components/Sidebar";
 import Notification from "@/components/home/Notification";
@@ -38,11 +38,16 @@ const SENSOR_THRESHOLDS = {
   kelembaban: [60, 80] as [number, number],
 };
 
+const LAST_ACTIVE_KEY = "lastUserActiveTime";
+
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
@@ -194,6 +199,15 @@ export default function DashboardLayout({
     return () => unsubscribe();
   }, []);
 
+
+  // --- PERBAIKAN LOGIKA RETURN ---
+  // Jika auth masih loading ATAU jika user tidak ada (dan akan di-redirect oleh useEffect)
+  // tampilkan null (layar kosong)
+  if (isAuthLoading || !user) {
+    return null;
+  }
+
+  // Hanya jika loading selesai DAN user ada, tampilkan layout dashboard
   return (
     <div className="flex h-screen bg-white">
       {/* Container Notifikasi Terapung */}

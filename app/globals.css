@@ -27,34 +27,88 @@
 }
 
 @layer utilities {
-  @keyframes aurora-wave {
+  @keyframes kibang-aurora {
     0% {
-      background-position: -200% 50%, -150% 50%, 0% 0%;
-      opacity: 0.8;
+      background-position: 0% 50%, 50% 0%, 100% 50%;
+      filter: hue-rotate(0deg);
     }
     50% {
-      background-position: 200% 50%, 250% 50%, 0% 0%;
-      opacity: 1;
+      background-position: 100% 50%, 0% 100%, 50% 0%;
+      filter: hue-rotate(20deg);
     }
     100% {
-      background-position: -200% 50%, -150% 50%, 0% 0%;
-      opacity: 0.8;
+      background-position: 0% 50%, 50% 0%, 100% 50%;
+      filter: hue-rotate(0deg);
     }
   }
 
-
 .bg-aurora {
-  background-color: #14532d;
-  background-image:
-    radial-gradient(ellipse at 20% 20%, #4ade80 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 70%, #22c55e 0%, transparent 50%);
-  background-size: 300% 300%;
-  animation: aurora-wave 25s ease-in-out infinite;
+  position: relative;
+  overflow: hidden;
 }
+
+.bg-aurora::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-color: #065F46;
+  background-image:
+radial-gradient(
+      ellipse at 30% 20%,
+      rgba(168, 245, 138, 0.6) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse at 70% 80%,
+      rgba(36, 201, 36, 0.5) 0%,
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse at 50% 50%,
+      rgba(168, 245, 138, 0.4) 0%,
+      transparent 70%
+    );
+  background-size: 250% 250%;
+  background-blend-mode: screen;
+  animation: kibang-aurora 22s ease-in-out infinite;
+  opacity: 0.6;
+  z-index: 0;
+}
+
+.bg-aurora > * {
+  position: relative;
+  z-index: 1;
+}
+
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+.bubble {
+  position: fixed;
+  background-color: rgba(40, 164, 40, 0.4);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: bubble-animation 0.8s ease-out forwards;
+  z-index: 9999;
+  left: 0;
+  top: 0;
+}
+
+@keyframes bubble-animation {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -150%) scale(0.3);
+    opacity: 0;
+  }
 }
