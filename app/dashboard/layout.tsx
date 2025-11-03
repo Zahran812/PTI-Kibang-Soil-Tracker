@@ -9,7 +9,8 @@ import { dbRealtime } from "@/lib/firebase";
 
 // Tipe Data Notifikasi
 interface AppNotification {
-  id: number;
+  id: number; // Tetap number (Date.now()) untuk key unik React
+  keyId: string; // ID unik untuk mengidentifikasi jenis notifikasi
   message: string;
   type: "warning" | "info";
 }
@@ -21,6 +22,15 @@ interface SensorData {
   kelembaban: number;
   timestamp?: number;
 }
+
+// Konstanta untuk mengidentifikasi jenis notifikasi (Key ID)
+const NOTIFICATION_KEYS = {
+  ph: "PH_OUT_OF_RANGE",
+  suhu: "SUHU_OUT_OF_RANGE",
+  kelembaban: "KELEMBABAN_OUT_OF_RANGE",
+  firebaseError: "FIREBASE_ERROR",
+  noData: "NO_SENSOR_DATA",
+};
 
 const SENSOR_THRESHOLDS = {
   ph: [5.5, 7.0] as [number, number],
@@ -39,33 +49,43 @@ export default function DashboardLayout({
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
   const closeSidebar = () => setIsSidebarOpen(false);
 
-  // Fungsi untuk menambah notifikasi
-  const addNotification = (
-    message: string,
+  // Fungsi untuk menambah/mengupdate/menghapus notifikasi
+  const updateNotification = (
+    keyId: string, // ID unik untuk identifikasi jenis notifikasi
+    message: string | null, // null jika notifikasi harus dihapus
     type: "warning" | "info" = "warning"
   ) => {
     setNotifications((prev) => {
-      // Jika notifikasi dengan pesan yang sama sudah ada, update saja
-      const existing = prev.find((n) => n.message.startsWith(message.split("(")[0]));
-      if (existing) {
-        // Update bagian angka di akhir (misalnya ph berubah)
-        const updated = prev.map((n) =>
-          n.id === existing.id ? { ...n, message } : n
-        );
-        return updated;
+      // Cari berdasarkan keyId, bukan id number
+      const existingIndex = prev.findIndex((n) => n.keyId === keyId);
+
+      if (message === null) {
+        // Hapus notifikasi jika message null (nilai sudah kembali normal)
+        if (existingIndex !== -1) {
+          return prev.filter((n) => n.keyId !== keyId);
+        }
+        return prev; // Tidak ada perubahan
       }
 
-      // Jika belum ada, tambahkan notifikasi baru
-      const newNotifications = [
-        ...prev,
-        { id: Date.now(), message, type },
-      ];
-      // Batasi hanya 5 notifikasi terakhir
-      return newNotifications.slice(-5);
+      if (existingIndex !== -1) {
+        // Update notifikasi yang sudah ada
+        const updated = [...prev];
+        // Pertahankan id number (timestamp) yang lama, hanya update message
+        updated[existingIndex] = { ...updated[existingIndex], message, type }; 
+        return updated;
+      } else {
+        // Tambahkan notifikasi baru
+        const newNotifications = [
+          ...prev, 
+          // Gunakan Date.now() untuk id number unik
+          { id: Date.now(), keyId, message, type }, 
+        ];
+        return newNotifications;
+      }
     });
   };
 
-  // Fungsi untuk hapus notifikasi
+  // Fungsi untuk hapus notifikasi (berdasarkan id number)
   const removeNotification = (id: number) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
@@ -74,7 +94,11 @@ export default function DashboardLayout({
   useEffect(() => {
     if (!dbRealtime) {
       console.error("Firebase DB tidak terinisialisasi.");
-      addNotification("Koneksi Firebase gagal, notifikasi nonaktif.", "info");
+      updateNotification(
+        NOTIFICATION_KEYS.firebaseError,
+        "Koneksi Firebase gagal, notifikasi nonaktif.",
+        "info"
+      );
       return;
     }
 
@@ -83,24 +107,38 @@ export default function DashboardLayout({
     const unsubscribe = onValue(
       latestSensorRef,
       (snapshot) => {
+        // Hapus notifikasi error koneksi jika berhasil membaca
+        updateNotification(NOTIFICATION_KEYS.firebaseError, null); 
+
         if (snapshot.exists()) {
           const data: SensorData = snapshot.val();
           const { ph, suhu, kelembaban } = data;
 
-          // Cek tiap threshold
-          if (ph < SENSOR_THRESHOLDS.ph[0] || ph > SENSOR_THRESHOLDS.ph[1]) {
-            addNotification(
+          // --- LOGIKA CEK DAN UPDATE NOTIFIKASI SENSOR ---
+
+          // 1. Cek pH
+          const phOutOfRange =
+            ph < SENSOR_THRESHOLDS.ph[0] || ph > SENSOR_THRESHOLDS.ph[1];
+          if (phOutOfRange) {
+            updateNotification(
+              NOTIFICATION_KEYS.ph,
               `Perhatian: pH tanah (${ph.toFixed(
                 1
               )}) di luar batas normal (${SENSOR_THRESHOLDS.ph.join(" - ")}).`,
               "warning"
             );
+          } else {
+            // Hapus notifikasi jika pH kembali normal
+            updateNotification(NOTIFICATION_KEYS.ph, null);
           }
-          if (
+
+          // 2. Cek Suhu
+          const suhuOutOfRange =
             suhu < SENSOR_THRESHOLDS.suhu[0] ||
-            suhu > SENSOR_THRESHOLDS.suhu[1]
-          ) {
-            addNotification(
+            suhu > SENSOR_THRESHOLDS.suhu[1];
+          if (suhuOutOfRange) {
+            updateNotification(
+              NOTIFICATION_KEYS.suhu,
               `Perhatian: Suhu tanah (${suhu.toFixed(
                 1
               )}°C) di luar batas normal (${SENSOR_THRESHOLDS.suhu.join(
@@ -108,12 +146,18 @@ export default function DashboardLayout({
               )}°C).`,
               "warning"
             );
+          } else {
+            // Hapus notifikasi jika Suhu kembali normal
+            updateNotification(NOTIFICATION_KEYS.suhu, null);
           }
-          if (
+
+          // 3. Cek Kelembaban
+          const kelembabanOutOfRange =
             kelembaban < SENSOR_THRESHOLDS.kelembaban[0] ||
-            kelembaban > SENSOR_THRESHOLDS.kelembaban[1]
-          ) {
-            addNotification(
+            kelembaban > SENSOR_THRESHOLDS.kelembaban[1];
+          if (kelembabanOutOfRange) {
+            updateNotification(
+              NOTIFICATION_KEYS.kelembaban,
               `Perhatian: Kelembaban tanah (${kelembaban.toFixed(
                 1
               )}%) di luar batas normal (${SENSOR_THRESHOLDS.kelembaban.join(
@@ -121,14 +165,29 @@ export default function DashboardLayout({
               )}%).`,
               "warning"
             );
+          } else {
+            // Hapus notifikasi jika Kelembaban kembali normal
+            updateNotification(NOTIFICATION_KEYS.kelembaban, null);
           }
+
+          // Hapus notifikasi "Tidak ada data" jika data ditemukan
+          updateNotification(NOTIFICATION_KEYS.noData, null);
+          
         } else {
-          addNotification("Tidak ada data sensor terbaru ditemukan.", "info");
+          updateNotification(
+            NOTIFICATION_KEYS.noData,
+            "Tidak ada data sensor terbaru ditemukan.",
+            "info"
+          );
         }
       },
       (error) => {
         console.error("Firebase latest sensor read failed:", error);
-        addNotification("Gagal membaca data sensor dari Firebase.", "warning");
+        updateNotification(
+          NOTIFICATION_KEYS.firebaseError,
+          "Gagal membaca data sensor dari Firebase.",
+          "warning"
+        );
       }
     );
 
@@ -140,9 +199,10 @@ export default function DashboardLayout({
       {/* Container Notifikasi Terapung */}
       <div className="fixed top-4 right-4 w-full max-w-xs z-[100] space-y-2 pointer-events-none">
         {notifications.map((notif) => (
-          <div key={notif.id} className="pointer-events-auto">
+          // Gunakan id number (Date.now()) sebagai key React
+          <div key={notif.id} className="pointer-events-auto"> 
             <Notification
-              id={notif.id}
+              id={notif.id} // Menggunakan id number untuk onClose
               message={notif.message}
               type={notif.type}
               onClose={() => removeNotification(notif.id)}
