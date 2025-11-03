@@ -47,7 +47,7 @@ export default function DashboardLayout({
   // --- TAMBAHKAN: LOGIKA UNTUK IDLE TIMEOUT ---
   const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
   // Atur 30 menit dalam milidetik
-  const INACTIVITY_TIMEOUT = 10000;
+  const INACTIVITY_TIMEOUT = 30 * 60 * 1000;
 
   // Fungsi untuk logout
   const handleLogout = useCallback(async () => {
