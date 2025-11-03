@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react"; // TAMBAHKAN: useRef dan useCallback
 import Header from "../../components/Header";
 import Sidebar from "../../components/Sidebar";
 import Notification from "@/components/home/Notification";
 import { onValue, ref } from "firebase/database";
 import { db, auth } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
-import { onAuthStateChanged, User } from "firebase/auth";
+import { onAuthStateChanged, User, signOut } from "firebase/auth"; // TAMBAHKAN: signOut
+import { toast } from "react-toastify"; // TAMBAHKAN: import toast
 
 // Tipe Data Notifikasi
 interface AppNotification {
@@ -41,6 +42,71 @@ export default function DashboardLayout({
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
+  // --- TAMBAHKAN: LOGIKA UNTUK IDLE TIMEOUT ---
+  const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
+  // Atur 30 menit dalam milidetik
+  const INACTIVITY_TIMEOUT = 30 * 60 * 1000;
+
+  // Fungsi untuk logout
+  const handleLogout = useCallback(async () => {
+    // Hentikan timer jika ada
+    if (inactivityTimer.current) {
+      clearTimeout(inactivityTimer.current);
+    }
+    try {
+      await signOut(auth);
+      toast.info("Anda telah otomatis logout karena tidak ada aktivitas.");
+      router.replace("/login");
+    } catch (error) {
+      console.error("Auto-logout failed:", error);
+      toast.error("Gagal melakukan auto-logout.");
+    }
+  }, [router]); // dependency router
+
+  // Fungsi untuk me-reset timer
+  const resetInactivityTimer = useCallback(() => {
+    // Hapus timer lama
+    if (inactivityTimer.current) {
+      clearTimeout(inactivityTimer.current);
+    }
+    // Set timer baru
+    inactivityTimer.current = setTimeout(handleLogout, INACTIVITY_TIMEOUT);
+  }, [handleLogout, INACTIVITY_TIMEOUT]);
+
+  // --- TAMBAHKAN: useEffect untuk memantau aktivitas ---
+  useEffect(() => {
+    // Hanya jalankan jika user sudah login dan loading auth selesai
+    if (!isAuthLoading && user) {
+      // Daftar aktivitas yang akan di-deteksi
+      const events = [
+        "mousemove",
+        "mousedown",
+        "keypress",
+        "touchstart",
+        "scroll",
+      ];
+
+      // Pasang event listener ke window
+      events.forEach((event) => {
+        window.addEventListener(event, resetInactivityTimer);
+      });
+
+      // Mulai timer pertama kali saat komponen dimuat
+      resetInactivityTimer();
+
+      // Cleanup function: Hapus listener dan timer saat komponen unmount
+      return () => {
+        if (inactivityTimer.current) {
+          clearTimeout(inactivityTimer.current);
+        }
+        events.forEach((event) => {
+          window.removeEventListener(event, resetInactivityTimer);
+        });
+      };
+    }
+  }, [isAuthLoading, user, resetInactivityTimer]); // Dependencies
+  // --- BATAS PENAMBAHAN KODE ---
+
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
   };
@@ -71,7 +137,7 @@ export default function DashboardLayout({
     return () => unsubscribe();
   }, []);
 
-  useEffect(() => { //useeffect2
+  useEffect(() => { //useffect2
     if (isAuthLoading) {
       return;
     }
@@ -82,7 +148,7 @@ export default function DashboardLayout({
   }, [isAuthLoading, user, router]); // Berjalan saat status loading atau user berubah
 
   // Logic Fetching Data & Pendeteksian Notifikasi
-  useEffect(() => { //useeffect3
+  useEffect(() => { //useffect3
     if (isAuthLoading || !user) return;
 
     if (!db) {
