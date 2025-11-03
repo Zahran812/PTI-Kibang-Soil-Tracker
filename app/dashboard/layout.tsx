@@ -5,14 +5,12 @@ import Header from "../../components/Header";
 import Sidebar from "../../components/Sidebar";
 import Notification from "@/components/home/Notification";
 import { onValue, ref } from "firebase/database";
-import { db, auth } from "@/lib/firebase";
-import { useRouter } from "next/navigation";
-import { onAuthStateChanged, User, signOut } from "firebase/auth"; // TAMBAHKAN: signOut
-import { toast } from "react-toastify"; // TAMBAHKAN: import toast
+import { dbRealtime } from "@/lib/firebase";
 
 // Tipe Data Notifikasi
 interface AppNotification {
-  id: number;
+  id: number; // Tetap number (Date.now()) untuk key unik React
+  keyId: string; // ID unik untuk mengidentifikasi jenis notifikasi
   message: string;
   type: "warning" | "info";
 }
@@ -24,6 +22,15 @@ interface SensorData {
   kelembaban: number;
   timestamp?: number;
 }
+
+// Konstanta untuk mengidentifikasi jenis notifikasi (Key ID)
+const NOTIFICATION_KEYS = {
+  ph: "PH_OUT_OF_RANGE",
+  suhu: "SUHU_OUT_OF_RANGE",
+  kelembaban: "KELEMBABAN_OUT_OF_RANGE",
+  firebaseError: "FIREBASE_ERROR",
+  noData: "NO_SENSOR_DATA",
+};
 
 const SENSOR_THRESHOLDS = {
   ph: [5.5, 7.0] as [number, number],
@@ -44,166 +51,99 @@ export default function DashboardLayout({
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
-  // --- TAMBAHKAN: LOGIKA UNTUK IDLE TIMEOUT ---
-  const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
-  // Atur 30 menit dalam milidetik
-  const INACTIVITY_TIMEOUT = 30 * 60 * 1000;
+  const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+  const closeSidebar = () => setIsSidebarOpen(false);
 
-  // Fungsi untuk logout
-  const handleLogout = useCallback(async () => {
-    // Hentikan timer jika ada
-    if (inactivityTimer.current) {
-      clearTimeout(inactivityTimer.current);
-      localStorage.removeItem(LAST_ACTIVE_KEY);
-    }
-    try {
-      await signOut(auth);
-      toast.info("Anda telah otomatis logout karena tidak ada aktivitas.");
-      router.replace("/login");
-    } catch (error) {
-      console.error("Auto-logout failed:", error);
-      toast.error("Gagal melakukan auto-logout.");
-    }
-  }, [router]); // dependency router
-
-  // Fungsi untuk me-reset timer
-  const resetInactivityTimer = useCallback(() => {
-    localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
-    // Hapus timer lama
-    if (inactivityTimer.current) {
-      clearTimeout(inactivityTimer.current);
-    }
-    // Set timer baru
-    inactivityTimer.current = setTimeout(handleLogout, INACTIVITY_TIMEOUT);
-  }, [handleLogout, INACTIVITY_TIMEOUT]);
-
-  useEffect(() => {
-    const lastActive = localStorage.getItem(LAST_ACTIVE_KEY);
-    if (lastActive) {
-      const lastActiveTime = parseInt(lastActive, 10);
-      const timeSinceLastActive = Date.now() - lastActiveTime;
-
-      if (timeSinceLastActive > INACTIVITY_TIMEOUT) {
-        // Jika sudah lebih dari 30 menit sejak aktivitas terakhir,
-        // paksa logout segera
-        handleLogout();
-      }
-    }
-  }, [handleLogout, INACTIVITY_TIMEOUT]);
-
-  // --- TAMBAHKAN: useEffect untuk memantau aktivitas ---
-  useEffect(() => {
-    // Hanya jalankan jika user sudah login dan loading auth selesai
-    if (!isAuthLoading && user) {
-      // Daftar aktivitas yang akan di-deteksi
-      const events = [
-        "mousemove",
-        "mousedown",
-        "keypress",
-        "touchstart",
-        "scroll",
-      ];
-
-      // Pasang event listener ke window
-      events.forEach((event) => {
-        window.addEventListener(event, resetInactivityTimer);
-      });
-
-      // Mulai timer pertama kali saat komponen dimuat
-      resetInactivityTimer();
-
-      // Cleanup function: Hapus listener dan timer saat komponen unmount
-      return () => {
-        if (inactivityTimer.current) {
-          clearTimeout(inactivityTimer.current);
-        }
-        events.forEach((event) => {
-          window.removeEventListener(event, resetInactivityTimer);
-        });
-      };
-    }
-  }, [isAuthLoading, user, resetInactivityTimer]); // Dependencies
-  // --- BATAS PENAMBAHAN KODE ---
-
-  const toggleSidebar = () => {
-    setIsSidebarOpen(!isSidebarOpen);
-  };
-
-  const closeSidebar = () => {
-    setIsSidebarOpen(false);
-  };
-
-  const addNotification = (
-    message: string,
+  // Fungsi untuk menambah/mengupdate/menghapus notifikasi
+  const updateNotification = (
+    keyId: string, // ID unik untuk identifikasi jenis notifikasi
+    message: string | null, // null jika notifikasi harus dihapus
     type: "warning" | "info" = "warning"
   ) => {
     setNotifications((prev) => {
-      const newNotifications = [...prev, { id: Date.now(), message, type }];
-      return newNotifications.slice(-5);
+      // Cari berdasarkan keyId, bukan id number
+      const existingIndex = prev.findIndex((n) => n.keyId === keyId);
+
+      if (message === null) {
+        // Hapus notifikasi jika message null (nilai sudah kembali normal)
+        if (existingIndex !== -1) {
+          return prev.filter((n) => n.keyId !== keyId);
+        }
+        return prev; // Tidak ada perubahan
+      }
+
+      if (existingIndex !== -1) {
+        // Update notifikasi yang sudah ada
+        const updated = [...prev];
+        // Pertahankan id number (timestamp) yang lama, hanya update message
+        updated[existingIndex] = { ...updated[existingIndex], message, type }; 
+        return updated;
+      } else {
+        // Tambahkan notifikasi baru
+        const newNotifications = [
+          ...prev, 
+          // Gunakan Date.now() untuk id number unik
+          { id: Date.now(), keyId, message, type }, 
+        ];
+        return newNotifications;
+      }
     });
   };
 
+  // Fungsi untuk hapus notifikasi (berdasarkan id number)
   const removeNotification = (id: number) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
-  useEffect(() => { //useffect1
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setIsAuthLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => { //useffect2
-    if (isAuthLoading) {
-      return;
-    }
-
-    if (!user) {
-      router.replace("/login");
-    }
-  }, [isAuthLoading, user, router]); // Berjalan saat status loading atau user berubah
-
-  // Logic Fetching Data & Pendeteksian Notifikasi
-  useEffect(() => { //useffect3
-    if (isAuthLoading || !user) return;
-
-    if (!db) {
-      console.error(
-        "Firebase DB is not initialized. Please check '@/lib/firebase'."
-      );
-      addNotification(
-        "Koneksi Firebase gagal, notifikasi tidak aktif.",
+  // Fetch data realtime dari Firebase
+  useEffect(() => {
+    if (!dbRealtime) {
+      console.error("Firebase DB tidak terinisialisasi.");
+      updateNotification(
+        NOTIFICATION_KEYS.firebaseError,
+        "Koneksi Firebase gagal, notifikasi nonaktif.",
         "info"
       );
       return;
     }
 
-    const latestSensorRef = ref(db, "sensors/latest");
+    const latestSensorRef = ref(dbRealtime, "sensors/latest");
 
-    const unsubscribeLatest = onValue(
+    const unsubscribe = onValue(
       latestSensorRef,
       (snapshot) => {
+        // Hapus notifikasi error koneksi jika berhasil membaca
+        updateNotification(NOTIFICATION_KEYS.firebaseError, null); 
+
         if (snapshot.exists()) {
           const data: SensorData = snapshot.val();
           const { ph, suhu, kelembaban } = data;
 
-          // Cek PH
-          if (ph < SENSOR_THRESHOLDS.ph[0] || ph > SENSOR_THRESHOLDS.ph[1]) {
-            addNotification(
+          // --- LOGIKA CEK DAN UPDATE NOTIFIKASI SENSOR ---
+
+          // 1. Cek pH
+          const phOutOfRange =
+            ph < SENSOR_THRESHOLDS.ph[0] || ph > SENSOR_THRESHOLDS.ph[1];
+          if (phOutOfRange) {
+            updateNotification(
+              NOTIFICATION_KEYS.ph,
               `Perhatian: pH tanah (${ph.toFixed(
                 1
               )}) di luar batas normal (${SENSOR_THRESHOLDS.ph.join(" - ")}).`,
               "warning"
             );
+          } else {
+            // Hapus notifikasi jika pH kembali normal
+            updateNotification(NOTIFICATION_KEYS.ph, null);
           }
-          // Cek Suhu
-          if (
+
+          // 2. Cek Suhu
+          const suhuOutOfRange =
             suhu < SENSOR_THRESHOLDS.suhu[0] ||
-            suhu > SENSOR_THRESHOLDS.suhu[1]
-          ) {
-            addNotification(
+            suhu > SENSOR_THRESHOLDS.suhu[1];
+          if (suhuOutOfRange) {
+            updateNotification(
+              NOTIFICATION_KEYS.suhu,
               `Perhatian: Suhu tanah (${suhu.toFixed(
                 1
               )}°C) di luar batas normal (${SENSOR_THRESHOLDS.suhu.join(
@@ -211,13 +151,18 @@ export default function DashboardLayout({
               )}°C).`,
               "warning"
             );
+          } else {
+            // Hapus notifikasi jika Suhu kembali normal
+            updateNotification(NOTIFICATION_KEYS.suhu, null);
           }
-          // Cek Kelembaban
-          if (
+
+          // 3. Cek Kelembaban
+          const kelembabanOutOfRange =
             kelembaban < SENSOR_THRESHOLDS.kelembaban[0] ||
-            kelembaban > SENSOR_THRESHOLDS.kelembaban[1]
-          ) {
-            addNotification(
+            kelembaban > SENSOR_THRESHOLDS.kelembaban[1];
+          if (kelembabanOutOfRange) {
+            updateNotification(
+              NOTIFICATION_KEYS.kelembaban,
               `Perhatian: Kelembaban tanah (${kelembaban.toFixed(
                 1
               )}%) di luar batas normal (${SENSOR_THRESHOLDS.kelembaban.join(
@@ -225,21 +170,34 @@ export default function DashboardLayout({
               )}%).`,
               "warning"
             );
+          } else {
+            // Hapus notifikasi jika Kelembaban kembali normal
+            updateNotification(NOTIFICATION_KEYS.kelembaban, null);
           }
+
+          // Hapus notifikasi "Tidak ada data" jika data ditemukan
+          updateNotification(NOTIFICATION_KEYS.noData, null);
+          
         } else {
-          addNotification("Tidak ada data sensor terbaru ditemukan.", "info");
+          updateNotification(
+            NOTIFICATION_KEYS.noData,
+            "Tidak ada data sensor terbaru ditemukan.",
+            "info"
+          );
         }
       },
       (error) => {
         console.error("Firebase latest sensor read failed:", error);
-        addNotification("Gagal membaca data sensor dari Firebase.", "warning");
+        updateNotification(
+          NOTIFICATION_KEYS.firebaseError,
+          "Gagal membaca data sensor dari Firebase.",
+          "warning"
+        );
       }
     );
 
-    return () => {
-      unsubscribeLatest();
-    };
-  }, [isAuthLoading, user]);
+    return () => unsubscribe();
+  }, []);
 
 
   // --- PERBAIKAN LOGIKA RETURN ---
@@ -252,11 +210,13 @@ export default function DashboardLayout({
   // Hanya jika loading selesai DAN user ada, tampilkan layout dashboard
   return (
     <div className="flex h-screen bg-white">
+      {/* Container Notifikasi Terapung */}
       <div className="fixed top-4 right-4 w-full max-w-xs z-[100] space-y-2 pointer-events-none">
         {notifications.map((notif) => (
-          <div key={notif.id} className="pointer-events-auto">
+          // Gunakan id number (Date.now()) sebagai key React
+          <div key={notif.id} className="pointer-events-auto"> 
             <Notification
-              id={notif.id}
+              id={notif.id} // Menggunakan id number untuk onClose
               message={notif.message}
               type={notif.type}
               onClose={() => removeNotification(notif.id)}
@@ -265,12 +225,12 @@ export default function DashboardLayout({
         ))}
       </div>
 
-      {/* Desktop Sidebar - Hidden on mobile */}
+      {/* Sidebar */}
       <div className="hidden lg:block">
         <Sidebar />
       </div>
 
-      {/* Mobile Sidebar Overlay */}
+      {/* Sidebar Mobile */}
       {isSidebarOpen && (
         <>
           <div
@@ -284,7 +244,6 @@ export default function DashboardLayout({
       )}
 
       <div className="flex flex-col flex-1">
-        {/* Header */}
         <Header
           onToggleSidebar={toggleSidebar}
           notifications={notifications}
