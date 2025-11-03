@@ -31,6 +31,8 @@ const SENSOR_THRESHOLDS = {
   kelembaban: [60, 80] as [number, number],
 };
 
+const LAST_ACTIVE_KEY = "lastUserActiveTime";
+
 export default function DashboardLayout({
   children,
 }: {
@@ -45,13 +47,14 @@ export default function DashboardLayout({
   // --- TAMBAHKAN: LOGIKA UNTUK IDLE TIMEOUT ---
   const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
   // Atur 30 menit dalam milidetik
-  const INACTIVITY_TIMEOUT = 30 * 60 * 1000;
+  const INACTIVITY_TIMEOUT = 10000;
 
   // Fungsi untuk logout
   const handleLogout = useCallback(async () => {
     // Hentikan timer jika ada
     if (inactivityTimer.current) {
       clearTimeout(inactivityTimer.current);
+      localStorage.removeItem(LAST_ACTIVE_KEY);
     }
     try {
       await signOut(auth);
@@ -65,12 +68,27 @@ export default function DashboardLayout({
 
   // Fungsi untuk me-reset timer
   const resetInactivityTimer = useCallback(() => {
+    localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
     // Hapus timer lama
     if (inactivityTimer.current) {
       clearTimeout(inactivityTimer.current);
     }
     // Set timer baru
     inactivityTimer.current = setTimeout(handleLogout, INACTIVITY_TIMEOUT);
+  }, [handleLogout, INACTIVITY_TIMEOUT]);
+
+  useEffect(() => {
+    const lastActive = localStorage.getItem(LAST_ACTIVE_KEY);
+    if (lastActive) {
+      const lastActiveTime = parseInt(lastActive, 10);
+      const timeSinceLastActive = Date.now() - lastActiveTime;
+
+      if (timeSinceLastActive > INACTIVITY_TIMEOUT) {
+        // Jika sudah lebih dari 30 menit sejak aktivitas terakhir,
+        // paksa logout segera
+        handleLogout();
+      }
+    }
   }, [handleLogout, INACTIVITY_TIMEOUT]);
 
   // --- TAMBAHKAN: useEffect untuk memantau aktivitas ---
