@@ -1,19 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react"; // TAMBAHKAN: useRef dan useCallback
 import Header from "../../components/Header";
 import Sidebar from "../../components/Sidebar";
-import Notification from "@/components/home/Notification"; // Import Notification
-// Mengimport fungsi dan objek yang diperlukan dari Firebase
+import Notification from "@/components/home/Notification";
 import { onValue, ref } from "firebase/database";
-// Asumsi 'db' di-export dari '@/lib/firebase'.
-// Kita tidak bisa langsung import { db } dari '@/lib/firebase' di sini karena tidak disediakan,
-// tetapi saya asumsikan db akan tersedia secara global (atau di-import di file aslinya,
-// berdasarkan struktur kode yang Anda berikan sebelumnya).
-// Untuk memastikan kode ini berfungsi dalam lingkungan Next.js,
-// saya akan mengasumsikan Anda memiliki Realtime Database instance yang sudah siap (db).
-// Catatan: Saya menggunakan import dari lib/firebase seperti yang ada di kode yang Anda berikan.
-import { db } from "@/lib/firebase";
+import { db, auth } from "@/lib/firebase";
+import { useRouter } from "next/navigation";
+import { onAuthStateChanged, User, signOut } from "firebase/auth"; // TAMBAHKAN: signOut
+import { toast } from "react-toastify"; // TAMBAHKAN: import toast
 
 // Tipe Data Notifikasi
 interface AppNotification {
@@ -22,7 +17,7 @@ interface AppNotification {
   type: "warning" | "info";
 }
 
-// Tipe Data Sensor (didefinisikan ulang di sini)
+// Tipe Data Sensor
 interface SensorData {
   ph: number;
   suhu: number;
@@ -36,16 +31,99 @@ const SENSOR_THRESHOLDS = {
   kelembaban: [60, 80] as [number, number],
 };
 
+const LAST_ACTIVE_KEY = "lastUserActiveTime";
+
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  // latestData state dihapus karena nilainya tidak digunakan untuk rendering di layout,
-  // melainkan hanya digunakan di dalam listener untuk memicu notifikasi.
-  // const [latestData, setLatestData] = useState<SensorData | null>(null);
+
+  // --- TAMBAHKAN: LOGIKA UNTUK IDLE TIMEOUT ---
+  const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
+  // Atur 30 menit dalam milidetik
+  const INACTIVITY_TIMEOUT = 30 * 60 * 1000;
+
+  // Fungsi untuk logout
+  const handleLogout = useCallback(async () => {
+    // Hentikan timer jika ada
+    if (inactivityTimer.current) {
+      clearTimeout(inactivityTimer.current);
+      localStorage.removeItem(LAST_ACTIVE_KEY);
+    }
+    try {
+      await signOut(auth);
+      toast.info("Anda telah otomatis logout karena tidak ada aktivitas.");
+      router.replace("/login");
+    } catch (error) {
+      console.error("Auto-logout failed:", error);
+      toast.error("Gagal melakukan auto-logout.");
+    }
+  }, [router]); // dependency router
+
+  // Fungsi untuk me-reset timer
+  const resetInactivityTimer = useCallback(() => {
+    localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
+    // Hapus timer lama
+    if (inactivityTimer.current) {
+      clearTimeout(inactivityTimer.current);
+    }
+    // Set timer baru
+    inactivityTimer.current = setTimeout(handleLogout, INACTIVITY_TIMEOUT);
+  }, [handleLogout, INACTIVITY_TIMEOUT]);
+
+  useEffect(() => {
+    const lastActive = localStorage.getItem(LAST_ACTIVE_KEY);
+    if (lastActive) {
+      const lastActiveTime = parseInt(lastActive, 10);
+      const timeSinceLastActive = Date.now() - lastActiveTime;
+
+      if (timeSinceLastActive > INACTIVITY_TIMEOUT) {
+        // Jika sudah lebih dari 30 menit sejak aktivitas terakhir,
+        // paksa logout segera
+        handleLogout();
+      }
+    }
+  }, [handleLogout, INACTIVITY_TIMEOUT]);
+
+  // --- TAMBAHKAN: useEffect untuk memantau aktivitas ---
+  useEffect(() => {
+    // Hanya jalankan jika user sudah login dan loading auth selesai
+    if (!isAuthLoading && user) {
+      // Daftar aktivitas yang akan di-deteksi
+      const events = [
+        "mousemove",
+        "mousedown",
+        "keypress",
+        "touchstart",
+        "scroll",
+      ];
+
+      // Pasang event listener ke window
+      events.forEach((event) => {
+        window.addEventListener(event, resetInactivityTimer);
+      });
+
+      // Mulai timer pertama kali saat komponen dimuat
+      resetInactivityTimer();
+
+      // Cleanup function: Hapus listener dan timer saat komponen unmount
+      return () => {
+        if (inactivityTimer.current) {
+          clearTimeout(inactivityTimer.current);
+        }
+        events.forEach((event) => {
+          window.removeEventListener(event, resetInactivityTimer);
+        });
+      };
+    }
+  }, [isAuthLoading, user, resetInactivityTimer]); // Dependencies
+  // --- BATAS PENAMBAHAN KODE ---
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
@@ -55,27 +133,42 @@ export default function DashboardLayout({
     setIsSidebarOpen(false);
   };
 
-  // Fungsi untuk menambahkan notifikasi
   const addNotification = (
     message: string,
     type: "warning" | "info" = "warning"
   ) => {
     setNotifications((prev) => {
-      // Hanya tampilkan 5 notifikasi terakhir
       const newNotifications = [...prev, { id: Date.now(), message, type }];
       return newNotifications.slice(-5);
     });
   };
 
-  // Fungsi untuk menghapus notifikasi
   const removeNotification = (id: number) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
+  useEffect(() => { //useffect1
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setIsAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => { //useffect2
+    if (isAuthLoading) {
+      return;
+    }
+
+    if (!user) {
+      router.replace("/login");
+    }
+  }, [isAuthLoading, user, router]); // Berjalan saat status loading atau user berubah
+
   // Logic Fetching Data & Pendeteksian Notifikasi
-  useEffect(() => {
-    // Memastikan 'db' tersedia. Jika Anda menggunakan Realtime Database, 'db' harus diimpor dari '@/lib/firebase'.
-    // Saya berasumsi import 'db' sudah bekerja di lingkungan Anda.
+  useEffect(() => { //useffect3
+    if (isAuthLoading || !user) return;
+
     if (!db) {
       console.error(
         "Firebase DB is not initialized. Please check '@/lib/firebase'."
@@ -89,15 +182,11 @@ export default function DashboardLayout({
 
     const latestSensorRef = ref(db, "sensors/latest");
 
-    // Listener untuk data sensor terbaru
     const unsubscribeLatest = onValue(
       latestSensorRef,
       (snapshot) => {
         if (snapshot.exists()) {
           const data: SensorData = snapshot.val();
-          // setLatestData(data); // Baris ini dihapus karena state latestData tidak lagi dideklarasikan
-
-          // LOGIC PENDETEKSIAN THRESHOLD
           const { ph, suhu, kelembaban } = data;
 
           // Cek PH
@@ -150,14 +239,21 @@ export default function DashboardLayout({
     return () => {
       unsubscribeLatest();
     };
-  }, []); // Run sekali saat komponen dimount
+  }, [isAuthLoading, user]);
 
+
+  // --- PERBAIKAN LOGIKA RETURN ---
+  // Jika auth masih loading ATAU jika user tidak ada (dan akan di-redirect oleh useEffect)
+  // tampilkan null (layar kosong)
+  if (isAuthLoading || !user) {
+    return null;
+  }
+
+  // Hanya jika loading selesai DAN user ada, tampilkan layout dashboard
   return (
     <div className="flex h-screen bg-white">
-      {/* Container Notifikasi Terapung (Fixed) - Menggunakan komponen Notification Anda */}
       <div className="fixed top-4 right-4 w-full max-w-xs z-[100] space-y-2 pointer-events-none">
         {notifications.map((notif) => (
-          // Tambahkan pointer-events-auto di komponen notifikasi agar bisa diklik/tutup
           <div key={notif.id} className="pointer-events-auto">
             <Notification
               id={notif.id}
@@ -188,11 +284,11 @@ export default function DashboardLayout({
       )}
 
       <div className="flex flex-col flex-1">
-        {/* Header sekarang menerima notifikasi sebagai prop */}
+        {/* Header */}
         <Header
           onToggleSidebar={toggleSidebar}
           notifications={notifications}
-          removeNotification={removeNotification} // Kirim fungsi penghapus notifikasi
+          removeNotification={removeNotification}
         />
         <main className="flex-1 overflow-auto">{children}</main>
       </div>

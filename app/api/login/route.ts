@@ -13,42 +13,52 @@ export async function POST(req: Request) {
       );
     }
 
-    // Ambil instance auth dari firebaseApp
     const auth = getAuth(firebaseApp);
 
-    // Login ke Firebase Auth
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
+    try {
+      // Coba login
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+      const user = userCredential.user;
+      const token = await user.getIdToken();
 
-    // Ambil token user
-    const token = await user.getIdToken();
+      // Jika sukses, kembalikan data user
+      return NextResponse.json({
+        message: "Login sukses",
+        user: { uid: user.uid, email: user.email },
+        token,
+      });
+    } catch (authError: any) {
+      // Jika gagal, kirim pesan error yang sesuai
+      console.error("Firebase Auth error:", authError);
 
-    return NextResponse.json({
-      message: "Login sukses",
-      user: {
-        uid: user.uid,
-        email: user.email,
-      },
-      token,
-    });
-  } catch (error: any) {
-    console.error("Login error:", error);
-    let message = "Terjadi kesalahan saat login";
+      let message = "Terjadi kesalahan saat login";
+      let status = 401;
 
-    switch (error.code) {
-      case "auth/user-not-found":
-        message = "User tidak ditemukan";
-        break;
-      case "auth/wrong-password":
-        message = "Password salah";
-        break;
-      case "auth/invalid-email":
+      if (
+        authError.code === "auth/wrong-password" ||
+        authError.code === "auth/user-not-found" ||
+        authError.code === "auth/invalid-credential"
+      ) {
+        message = "Email atau password salah";
+      } else if (authError.code === "auth/invalid-email") {
         message = "Format email tidak valid";
-        break;
-      default:
-        message = error.message;
-    }
+        status = 400;
+      } else {
+        message = authError.message || "Terjadi kesalahan tidak dikenal.";
+        status = 500;
+      }
 
-    return NextResponse.json({ error: message }, { status: 401 });
+      return NextResponse.json({ error: message }, { status });
+    }
+  } catch (error: any) {
+    console.error("General login error:", error);
+    return NextResponse.json(
+      { error: "Terjadi kesalahan pada server." },
+      { status: 500 }
+    );
   }
 }
