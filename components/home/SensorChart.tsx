@@ -1,69 +1,124 @@
-// components/SensorChart.tsx
 "use client";
 
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
+  Chart as ChartJS,
+  LineController,
+  LineElement,
+  PointElement,
+  LinearScale,
+  CategoryScale,
+  Title,
   Tooltip,
   Legend,
-  ResponsiveContainer,
-} from "recharts";
-import { useMemo } from "react";
+  Filler,
+} from "chart.js";
+import { Line } from "react-chartjs-2";
+import { useEffect, useRef, useState } from "react";
 
-interface SensorChartProps {
+ChartJS.register(
+  LineController,
+  LineElement,
+  PointElement,
+  LinearScale,
+  CategoryScale,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
+
+interface SensorRealtimeChartProps {
   title: string;
-  data: any[];
-  dataKey: string;
-  unit: string;
+  unit?: string;
+  color?: string;
+  getLatestValue: () => number;
+  interval?: number;
+  maxPoints?: number;
 }
 
-export default function SensorChart({
+export default function SensorRealtimeChart({
   title,
-  data,
-  dataKey,
-  unit,
-}: SensorChartProps) {
-  // Data dummy jika data asli kosong, agar grafik tetap terlihat
-  const dummyData = useMemo(
-    () => [
-      { time: "08:00", [dataKey]: 0 },
-      { time: "10:00", [dataKey]: 0 },
-      { time: "12:00", [dataKey]: 0 },
-      { time: "14:00", [dataKey]: 0 },
-    ],
-    [dataKey]
-  );
+  unit = "",
+  color = "#28A428",
+  getLatestValue,
+  interval = 1000,
+  maxPoints = 60,
+}: SensorRealtimeChartProps) {
+  const [chartData, setChartData] = useState<{ labels: string[]; values: number[] }>({
+    labels: [],
+    values: [],
+  });
 
-  const chartData = data.length > 0 ? data : dummyData;
+  const chartRef = useRef<ChartJS<"line">>(null);
+
+  // Tambah data realtime
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const value = getLatestValue();
+      const now = new Date();
+      const timeLabel = now.toLocaleTimeString("id-ID", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+
+      setChartData((prev) => {
+        const newLabels = [...prev.labels, timeLabel].slice(-maxPoints);
+        const newValues = [...prev.values, value].slice(-maxPoints);
+        return { labels: newLabels, values: newValues };
+      });
+    }, interval);
+
+    return () => clearInterval(timer);
+  }, [getLatestValue, interval, maxPoints]);
+
+  const data = {
+    labels: chartData.labels,
+    datasets: [
+      {
+        label: title,
+        data: chartData.values,
+        borderColor: color,
+        backgroundColor: color + "20",
+        borderWidth: 2,
+        tension: 0.4,
+        pointRadius: 0,
+        fill: true,
+      },
+    ],
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      title: { display: true, text: title },
+    },
+    animation: {
+      duration: 300,
+      easing: "easeInOutCubic",
+    },
+    scales: {
+      x: {
+        ticks: {
+          color: "#666",
+          maxTicksLimit: 5, // ✅ cuma tampilkan 5 label waktu
+        },
+        grid: { color: "rgba(220,220,220,0.2)" },
+      },
+      y: {
+        beginAtZero: true,
+        title: { display: !!unit, text: unit },
+        ticks: { color: "#666" },
+        grid: { color: "rgba(220,220,220,0.2)" },
+      },
+    },
+  } as const;
 
   return (
     <div className="bg-white p-4 rounded-lg shadow-lg h-80">
-      <h3 className="text-lg font-semibold text-gray-800 mb-4">{title}</h3>
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart
-          data={chartData}
-          margin={{ top: 5, right: 20, left: -10, bottom: 20 }}
-        >
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis
-            dataKey="time"
-            label={{ value: "Waktu", position: "insideBottom", offset: -15 }}
-          />
-          <YAxis unit={unit} />
-          <Tooltip formatter={(value) => `${value} ${unit}`} />
-          <Legend verticalAlign="top" height={36} />
-          <Line
-            type="monotone"
-            dataKey={dataKey}
-            stroke="#28A428"
-            strokeWidth={2}
-            activeDot={{ r: 8 }}
-          />
-        </LineChart>
-      </ResponsiveContainer>
+      <Line ref={chartRef} data={data} options={options} />
     </div>
   );
 }

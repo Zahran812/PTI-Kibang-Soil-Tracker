@@ -1,19 +1,11 @@
-// app/dashboard/home/client.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-import {
-  onValue,
-  ref,
-  query,
-  limitToLast,
-  orderByChild,
-} from "firebase/database";
+import { useEffect, useState, useRef } from "react";
+import { onValue, ref } from "firebase/database";
 import { dbRealtime } from "@/lib/firebase";
 import MetricCard from "@/components/home/MetricCard";
 import SensorChart from "@/components/home/SensorChart";
 
-// Tipe Data
 interface SensorData {
   ph: number;
   suhu: number;
@@ -42,62 +34,57 @@ const formatTime = (timestamp: number): string => {
   const date = new Date(timestamp);
   const hours = date.getHours().toString().padStart(2, "0");
   const minutes = date.getMinutes().toString().padStart(2, "0");
-  return `${hours}:${minutes}`;
+  const seconds = date.getSeconds().toString().padStart(2, "0");
+  return `${hours}:${minutes}:${seconds}`;
 };
 
 export default function DashboardClient({ initialData }: DashboardClientProps) {
   const [latestData, setLatestData] = useState(initialData);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const bufferRef = useRef<SensorData | null>(null);
 
   useEffect(() => {
     const latestSensorRef = ref(dbRealtime, "sensors/latest");
     const unsubscribeLatest = onValue(latestSensorRef, (snapshot) => {
       if (snapshot.exists()) {
         const data: SensorData = snapshot.val();
-        setLatestData(data);
+        bufferRef.current = {
+          ...data,
+          timestamp: data.timestamp || Date.now(),
+        };
       }
     });
 
-    const historySensorQuery = query(
-      ref(dbRealtime, "sensors/history"),
-      orderByChild("timestamp"),
-      limitToLast(10)
-    );
-    const unsubscribeHistory = onValue(
-      historySensorQuery,
-      (snapshot) => {
-        if (snapshot.exists()) {
-          const historyData: HistoryEntry[] = [];
-          snapshot.forEach((childSnapshot) => {
-            const data: SensorData = childSnapshot.val();
-            const timestamp = data.timestamp || Date.now();
-            historyData.push({
-              time: formatTime(timestamp),
-              ph: data.ph,
-              suhu: data.suhu,
-              kelembaban: data.kelembaban,
-            });
-          });
-          setHistory(historyData);
-        } else {
-          setHistory([]);
-        }
-      },
-      (error) => {
-        console.error("Firebase history read failed:", error);
-        setHistory([]);
-      }
-    );
+    // Set interval setiap 5 detik untuk ambil dari buffer
+    const interval = setInterval(() => {
+      if (!bufferRef.current) return;
+
+      const data = bufferRef.current;
+      setLatestData(data);
+
+      setHistory((prev) => {
+        const newEntry: HistoryEntry = {
+          time: formatTime(data.timestamp!),
+          ph: data.ph,
+          suhu: data.suhu,
+          kelembaban: data.kelembaban,
+        };
+
+        const updated = [...prev, newEntry];
+        // Simpan hanya 10 data terakhir
+        return updated.slice(-10);
+      });
+    }, 5000); // update tiap 5 detik
 
     return () => {
       unsubscribeLatest();
-      unsubscribeHistory();
+      clearInterval(interval);
     };
   }, []);
 
   return (
-
     <div className="bg-gray-50 min-h-full p-4 sm:p-6 lg:p-8 space-y-8">
+      {/* Metric Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <MetricCard
           title="pH Tanah"
@@ -118,19 +105,28 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
         />
       </div>
 
+      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <SensorChart title="Grafik pH" data={history} dataKey="ph" unit="" />
+        <SensorChart     
+          title="Grafik pH"
+          unit=""
+          color="#22c55e"
+          getLatestValue={() => latestData.ph}
+          interval={1000}
+        />
         <SensorChart
           title="Grafik Suhu"
-          data={history}
-          dataKey="suhu"
           unit="°C"
+          color="#f97316"
+          getLatestValue={() => latestData.suhu}
+          interval={1000} 
         />
         <SensorChart
           title="Grafik Kelembaban"
-          data={history}
-          dataKey="kelembaban"
           unit="%"
+          color="#3b82f6"
+          getLatestValue={() => latestData.kelembaban}
+          interval={1000}
         />
       </div>
     </div>
