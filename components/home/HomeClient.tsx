@@ -41,50 +41,98 @@ const formatTime = (timestamp: number): string => {
 export default function DashboardClient({ initialData }: DashboardClientProps) {
   const [latestData, setLatestData] = useState(initialData);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [isDeviceActive, setIsDeviceActive] = useState(true);
+
   const bufferRef = useRef<SensorData | null>(null);
+  const lastUpdateTime = useRef<number>(Date.now());
+  const hasSavedSession = useRef<boolean>(false);
 
-  useEffect(() => {
-    const latestSensorRef = ref(dbRealtime, "sensors/latest");
-    const unsubscribeLatest = onValue(latestSensorRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data: SensorData = snapshot.val();
-        bufferRef.current = {
-          ...data,
-          timestamp: data.timestamp || Date.now(),
-        };
-      }
+useEffect(() => {
+  const latestSensorRef = ref(dbRealtime, "sensors/latest");
+
+  // 🔄 Dengar update Realtime DB
+  const unsubscribeLatest = onValue(latestSensorRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const data: SensorData = snapshot.val();
+      bufferRef.current = {
+        ...data,
+        timestamp: data.timestamp || Date.now(),
+      };
+
+      lastUpdateTime.current = Date.now();
+      setIsDeviceActive(true);
+      hasSavedSession.current = false; // reset flag
+      setLatestData(data); // Aman dipanggil
+    }
+  });
+
+  // 🧠 Update UI tiap 5 detik
+  const interval = setInterval(() => {
+    if (!bufferRef.current) return;
+
+    const data = bufferRef.current;
+    setLatestData(data);
+
+    setHistory((prev) => {
+      const newEntry: HistoryEntry = {
+        time: formatTime(data.timestamp!),
+        ph: data.ph,
+        suhu: data.suhu,
+        kelembaban: data.kelembaban,
+      };
+      const updated = [...prev, newEntry];
+      return updated.slice(-10);
     });
+  }, 5000);
 
-    // Set interval setiap 5 detik untuk ambil dari buffer
-    const interval = setInterval(() => {
-      if (!bufferRef.current) return;
+  // 🚨 Deteksi alat berhenti kirim data
+  const checkInterval = setInterval(async () => {
+    const now = Date.now();
+    const diff = now - lastUpdateTime.current;
 
-      const data = bufferRef.current;
-      setLatestData(data);
+    if (diff > 3000 && !hasSavedSession.current) {
+      console.warn("⚠️ Alat berhenti mengirim data (>3 detik)");
 
-      setHistory((prev) => {
-        const newEntry: HistoryEntry = {
-          time: formatTime(data.timestamp!),
-          ph: data.ph,
-          suhu: data.suhu,
-          kelembaban: data.kelembaban,
-        };
+      try {
+        await fetch("/api/sensor-history", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(bufferRef.current),
+        });
 
-        const updated = [...prev, newEntry];
-        // Simpan hanya 10 data terakhir
-        return updated.slice(-10);
-      });
-    }, 5000); // update tiap 5 detik
+        console.log("✅ Data terakhir dikirim ke Firestore lewat server.");
+        hasSavedSession.current = true;
+      } catch (err) {
+        console.error("❌ Gagal mengirim data terakhir:", err);
+      }
 
-    return () => {
-      unsubscribeLatest();
-      clearInterval(interval);
-    };
-  }, []);
+      setIsDeviceActive(false);
+    }
+  }, 3000);
+
+  return () => {
+    unsubscribeLatest();
+    clearInterval(interval);
+    clearInterval(checkInterval);
+  };
+}, []); // <--- FIX: hanya run sekali
+
 
   return (
     <div className="bg-gray-50 min-h-full p-4 sm:p-6 lg:p-8 space-y-8">
-      {/* Metric Cards */}
+      {/* 🔘 Status Alat */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">Status Perangkat</h2>
+        <span
+          className={`px-3 py-1 rounded-full text-sm font-medium ${
+            isDeviceActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+          }`}
+        >
+          {isDeviceActive ? "Aktif" : "Tidak Aktif"}
+        </span>
+      </div>
+
+      {/* 📊 Metric Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <MetricCard
           title="pH Tanah"
@@ -105,9 +153,9 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
         />
       </div>
 
-      {/* Charts */}
+      {/* 📈 Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <SensorChart     
+        <SensorChart
           title="Grafik pH"
           unit=""
           color="#22c55e"
@@ -119,7 +167,7 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
           unit="°C"
           color="#f97316"
           getLatestValue={() => latestData.suhu}
-          interval={1000} 
+          interval={1000}
         />
         <SensorChart
           title="Grafik Kelembaban"

@@ -13,6 +13,7 @@ export async function GET() {
         ph: Number((Math.random() * 3 + 5).toFixed(2)), // 5 - 8
         suhu: Math.floor(Math.random() * 10 + 25), // 25 - 35
         kelembaban: Math.floor(Math.random() * 30 + 40), // 40 - 70
+        timestamp: new Date().toISOString(),
       };
 
       await set(ref(dbRealtime, "sensors/latest"), data);

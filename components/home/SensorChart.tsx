@@ -95,15 +95,24 @@ export default function SensorRealtimeChart({
       legend: { display: false },
       title: { display: true, text: title },
     },
-    animation: {
-      duration: 300,
-      easing: "easeInOutCubic",
+    animation: false, // 🔥 Matikan animasi default Chart.js (no naik dari bawah)
+    transitions: {
+      active: {
+        animation: {
+          duration: 0, // 🔥 Pastikan tidak ada animasi "spawn"
+        },
+      },
+      resize: {
+        animation: {
+          duration: 0,
+        },
+      },
     },
     scales: {
       x: {
         ticks: {
           color: "#666",
-          maxTicksLimit: 5, // ✅ cuma tampilkan 5 label waktu
+          maxTicksLimit: 5,
         },
         grid: { color: "rgba(220,220,220,0.2)" },
       },
@@ -115,6 +124,7 @@ export default function SensorRealtimeChart({
       },
     },
   } as const;
+
 
   return (
     <div className="bg-white p-4 rounded-lg shadow-lg h-80">
