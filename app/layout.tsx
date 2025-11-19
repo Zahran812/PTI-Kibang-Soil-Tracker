@@ -17,6 +17,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Kibang Soil Tracker",
   description: "Pantau kondisi tanah Anda secara real-time",
+  icons: {
+    icon: "/LOGO.png", // file ada di /public/favicon.ico
+  },
 };
 
 export default function RootLayout({
