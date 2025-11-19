@@ -2,6 +2,7 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getDatabase } from "firebase/database"; // Impor getDatabase
+import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
@@ -25,5 +26,6 @@ if (!getApps().length) {
 
 const auth = getAuth(firebaseApp);
 const dbRealtime = getDatabase(firebaseApp); // Inisialisasi Realtime Database
+const dbFirestore = getFirestore(firebaseApp);
 
-export { firebaseApp, auth, dbRealtime };
+export { firebaseApp, auth, dbRealtime, dbFirestore };

@@ -19,7 +19,7 @@ import { useNotificationHandler } from "@/hooks/useNotificationHandler";
 
 // Konstanta untuk auto-logout (TETAP DI SINI)
 const LAST_ACTIVE_KEY = "lastUserActiveTime";
-const INACTIVITY_TIMEOUT_MS = 1 * 60 * 1000; // 1 menit
+const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 1 menit
 const CHECK_INTERVAL_MS = 5000; // Cek setiap 5 detik
 
 export default function DashboardLayout({
