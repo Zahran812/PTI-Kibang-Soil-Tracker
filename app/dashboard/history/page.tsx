@@ -9,6 +9,23 @@ interface HistoryItem {
   kelembaban: string;
 }
 
+interface RawSensorItem {
+  id?: string;
+  timestamp: number | string;
+  ph: number;
+  suhu: number;
+  kelembaban: number;
+}
+
+interface FormattedSensorItem {
+  id: string;
+  waktu: string;
+  ph: number;
+  suhu: string;
+  kelembaban: string;
+}
+
+
 export default function HistoryPage() {
   const [data, setData] = React.useState<HistoryItem[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -89,23 +106,26 @@ export default function HistoryPage() {
           ? result.data
           : [];
 
-        const formatted = list.map((item: any, index: number) => {
-          const parsedDate = parseTimestamp(item.timestamp);
+        const formatted: FormattedSensorItem[] = list.map(
+          (item: RawSensorItem, index: number) => {
+            const parsedDate = parseTimestamp(item.timestamp);
 
-          return {
-            id: item.id || index.toString(),
-            waktu: formatTanggal(parsedDate),
-            ph: item.ph,
-            suhu: `${item.suhu}°C`,
-            kelembaban: `${item.kelembaban}%`,
-          };
-        });
+            return {
+              id: item.id || index.toString(),
+              waktu: formatTanggal(parsedDate),
+              ph: Number(item.ph.toFixed(2)),
+              suhu: `${item.suhu}°C`,
+              kelembaban: `${item.kelembaban}%`,
+            };
+          }
+        );
 
-        // 🧹 Hilangkan duplikasi berdasar waktu
+        // 🧹 Hilangkan duplikasi berdasarkan waktu
         const uniqueFormatted = formatted.filter(
           (item, index, self) =>
             index === self.findIndex((x) => x.waktu === item.waktu)
         );
+
 
         setData(uniqueFormatted);
       } catch (error) {
