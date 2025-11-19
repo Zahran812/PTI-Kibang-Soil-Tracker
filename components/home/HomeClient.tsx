@@ -40,7 +40,7 @@ const formatTime = (timestamp: number): string => {
 
 export default function DashboardClient({ initialData }: DashboardClientProps) {
   const [latestData, setLatestData] = useState(initialData);
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const setHistory = useState<HistoryEntry[]>([])[1];
   const [isDeviceActive, setIsDeviceActive] = useState(true);
 
   const bufferRef = useRef<SensorData | null>(null);
@@ -48,6 +48,7 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
   const lastUpdateTime = useRef<number>(Date.now());
   const hasSavedSession = useRef<boolean>(false);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const latestSensorRef = ref(dbRealtime, "sensors/latest");
 

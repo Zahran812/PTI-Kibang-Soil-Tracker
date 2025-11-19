@@ -43,7 +43,7 @@ export default function HistoryPage() {
   // ==============================
   // 🕒 PARSER TIMESTAMP CUSTOM
   // ==============================
-  function parseTimestamp(input: any): Date {
+  function parseTimestamp(input: number | string | Date) : Date {
     // Jika timestamp berupa angka (ms)
     if (typeof input === "number") {
       return new Date(input);
@@ -128,7 +128,7 @@ export default function HistoryPage() {
 
 
         setData(uniqueFormatted);
-      } catch (error) {
+      } catch {
         setData([]);
       } finally {
         setLoading(false);

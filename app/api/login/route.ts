@@ -31,30 +31,33 @@ export async function POST(req: Request) {
         user: { uid: user.uid, email: user.email },
         token,
       });
-    } catch (authError: any) {
-      // Jika gagal, kirim pesan error yang sesuai
+    } catch (authError: unknown) {
+      // Safety check tanpa any
       console.error("Firebase Auth error:", authError);
 
       let message = "Terjadi kesalahan saat login";
       let status = 401;
 
+      // Kita pastikan error punya shape yang sesuai
+      const err = authError as { code?: string; message?: string };
+
       if (
-        authError.code === "auth/wrong-password" ||
-        authError.code === "auth/user-not-found" ||
-        authError.code === "auth/invalid-credential"
+        err.code === "auth/wrong-password" ||
+        err.code === "auth/user-not-found" ||
+        err.code === "auth/invalid-credential"
       ) {
         message = "Email atau password salah";
-      } else if (authError.code === "auth/invalid-email") {
+      } else if (err.code === "auth/invalid-email") {
         message = "Format email tidak valid";
         status = 400;
       } else {
-        message = authError.message || "Terjadi kesalahan tidak dikenal.";
+        message = err.message || "Terjadi kesalahan tidak dikenal.";
         status = 500;
       }
 
       return NextResponse.json({ error: message }, { status });
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("General login error:", error);
     return NextResponse.json(
       { error: "Terjadi kesalahan pada server." },
